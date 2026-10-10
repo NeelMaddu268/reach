@@ -14,12 +14,12 @@ struct TuningSheet: View {
                                  value: $model.tuning.speedResponse, range: 0...40)
                 }
                 Section("Left / right") {
-                    TuningSlider(title: "Full pan at", note: "object this far to the side (fraction of frame width)",
-                                 value: $model.tuning.panRange, range: 0.1...0.8)
+                    TuningSlider(title: "Full pan at (m)", note: "object this far to the side, in meters",
+                                 value: $model.tuning.panRange, range: 0.05...0.4)
                     TuningSlider(title: "Pan curve", note: "< 1 makes small offsets louder on one side",
                                  value: $model.tuning.panCurve, range: 0.3...1.5)
                 }
-                Section("Pitch (Hz)") {
+                Section("Sonar pitch (Hz)") {
                     TuningSlider(title: "Far", note: "pitch when the hand is far away",
                                  value: $model.tuning.pitchFar, range: 150...600)
                     TuningSlider(title: "Near", note: "pitch right at the object",
@@ -32,7 +32,7 @@ struct TuningSheet: View {
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
                 Section("Voice") {
-                    Toggle("Spoken directions", isOn: $model.tuning.spokenCues)
+                    Toggle("Spoken coaching", isOn: $model.tuning.spokenCues)
                 }
                 Section("Gemini") {
                     Picker("Model", selection: $model.tuning.geminiModel) {

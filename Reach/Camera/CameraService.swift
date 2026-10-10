@@ -30,6 +30,10 @@ final class CameraService: NSObject, ARSessionDelegate {
         }
         let resolution = configuration.videoFormat.imageResolution  // landscape
         ImageSpace.aspect = resolution.height / resolution.width
+        // LiDAR depth: how far the fingertip really is from the object, including its height above it.
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+            configuration.frameSemantics.insert(.smoothedSceneDepth)
+        }
     }
 
     func start() throws {
@@ -37,6 +41,20 @@ final class CameraService: NSObject, ARSessionDelegate {
         session.delegate = self
         session.delegateQueue = frameQueue
         session.run(configuration)
+        sharpenCamera()
+    }
+
+    /// Keeps the image sharp for hand tracking: focus stays in near range (no hunting when the hand comes in),
+    /// and the shutter time is capped so a moving hand doesn't smear. Costs some grain in dim light.
+    private func sharpenCamera() {
+        guard let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera,
+              (try? device.lockForConfiguration()) != nil else { return }
+        if device.isAutoFocusRangeRestrictionSupported { device.autoFocusRangeRestriction = .near }
+        if device.isSmoothAutoFocusSupported { device.isSmoothAutoFocusEnabled = false }
+        let cap = CMTime(value: 1, timescale: 100)
+        let format = device.activeFormat
+        if format.minExposureDuration <= cap, cap <= format.maxExposureDuration { device.activeMaxExposureDuration = cap }
+        device.unlockForConfiguration()
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
