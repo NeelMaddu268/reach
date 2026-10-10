@@ -36,9 +36,15 @@ xcodegen generate
 xcodebuild -project Reach.xcodeproj -scheme Reach -destination 'generic/platform=iOS Simulator' -derivedDataPath build/DerivedData build -quiet
 ```
 
+Deploy to Neel's connected iPhone (build, install, launch):
+
+```bash
+scripts/deploy.sh
+```
+
 ## Rules
 
-- You can't run the camera; Neel tests on a real iPhone. Compile-check with xcodebuild against the iOS simulator after each step (the camera won't work there, which is fine).
+- You can't run the camera; Neel tests on a real iPhone. Compile-check with xcodebuild against the iOS simulator after each step (the camera won't work there, which is fine). Once a fix compiles, run `scripts/deploy.sh` to put it on the phone without asking; signing uses `DEVELOPMENT_TEAM` from the gitignored `Config/Secrets.xcconfig`.
 - Light verification: no subagents, no review passes, no test suites. A few unit tests for the guidance math only if they're quick. If the build fails twice on the same thing, stop and tell Neel.
 - Never commit secrets. List the libraries and AI tools used in the README.
 - Small, readable Swift. No third-party packages unless clearly needed.
