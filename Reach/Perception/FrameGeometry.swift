@@ -19,6 +19,11 @@ struct FrameGeometry {
 
     var hasDepth: Bool { depth != nil }
 
+    /// A portrait image point in the camera's native landscape coordinates (also used for focus points).
+    func landscapePoint(_ p: CGPoint) -> CGPoint {
+        p.applying(toLandscape)
+    }
+
     /// The 3D point at image point `p`, at the LiDAR depth read around `depthAt` (defaults to `p`).
     /// `percentile` picks from the depths around that point: low = nearest surface (a finger over the table).
     func point(at p: CGPoint, depthAt: CGPoint? = nil, percentile: Double = 0.25) -> simd_float3? {
@@ -54,7 +59,7 @@ struct FrameGeometry {
     private func depth(at p: CGPoint, percentile: Double) -> Float? {
         guard let depth else { return nil }
         let map = depth.depthMap
-        let q = p.applying(toLandscape)
+        let q = landscapePoint(p)
         CVPixelBufferLockBaseAddress(map, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
         let width = CVPixelBufferGetWidth(map), height = CVPixelBufferGetHeight(map)

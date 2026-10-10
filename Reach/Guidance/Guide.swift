@@ -44,6 +44,7 @@ final class Guide {
     private var lostSince: TimeInterval?
     private var handMissingSince: TimeInterval?
     private var lastCue: (text: String, time: TimeInterval)?
+    private var lastSector: Int?
 
     func start() {
         state = .guiding
@@ -51,6 +52,7 @@ final class Guide {
         lostSince = nil
         handMissingSince = nil
         lastCue = nil
+        lastSector = nil
     }
 
     /// Waiting for Gemini to find the object.
@@ -114,8 +116,8 @@ final class Guide {
         return output
     }
 
-    /// The instruction for the axis the hand is furthest off on, at most every `cueEvery` seconds (sooner when
-    /// the direction changes), never the exact same words twice within 4 s.
+    /// Which way to move and how far ("Out and right, 8 inches."), or "Lower, …" once right over the object.
+    /// At most every `cueEvery` seconds (sooner when the direction changes), never the same words twice within 4 s.
     private func cue(_ input: Input, outRight: Double, outForward: Double, over: Bool, toGoDown: Double,
                      time: TimeInterval) -> String? {
         let text: String
@@ -127,11 +129,9 @@ final class Guide {
             handMissingSince = nil
             if over {
                 guard toGoDown > 0, let above = input.above else { return nil }
-                text = Self.phrase("Down", above)
-            } else if outRight >= outForward {
-                text = Self.phrase(input.right > 0 ? "Right" : "Left", abs(input.right))
+                text = Self.phrase(Self.lower, above)
             } else {
-                text = Self.phrase(input.forward > 0 ? "Forward" : "Back", abs(input.forward))
+                text = Self.phrase(Self.directions[steadySector(input)], hypot(input.right, input.forward))
             }
         }
         if let lastCue {
@@ -143,19 +143,42 @@ final class Guide {
         return text
     }
 
-    /// "Found keys. 14 inches ahead, 5 inches to your right."
+    /// "Found keys: out and to the right, 14 inches."
     static func announcement(_ label: String, _ input: Input) -> String {
-        var parts: [String] = []
-        if abs(input.forward) >= 0.05 { parts.append("\(inches(abs(input.forward))) \(input.forward > 0 ? "ahead" : "toward you")") }
-        if abs(input.right) >= 0.05 { parts.append("\(inches(abs(input.right))) to your \(input.right > 0 ? "right" : "left")") }
-        return "Found \(label). " + (parts.isEmpty ? "Right in front of you." : parts.joined(separator: ", ") + ".")
+        let distance = hypot(input.right, input.forward)
+        guard distance >= 0.05 else { return "Found \(label), right in front of you." }
+        let way = ["straight out", "out and to the right", "to the right", "in and to the right",
+                   "straight in", "in and to the left", "to the left", "out and to the left"][sector(input)]
+        return "Found \(label): \(way), \(inches(distance))."
     }
 
+    /// Eight ways to move, clockwise from straight out (away from the body). "In" is toward the body.
+    static let directions = ["Straight out", "Out and right", "Right", "In and right",
+                             "Straight in", "In and left", "Left", "Out and left"]
+    static let lower = "Lower"
     /// Spoken distances snap to these, so every instruction has a pre-made clip (scripts/make_clips.py).
     static let inchSteps = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 24, 30, 36]
-    static let directions = ["Right", "Left", "Forward", "Back", "Down"]
 
-    /// "Right, 6 inches."
+    /// Index into `directions` for the way from the hand to the object.
+    static func sector(_ input: Input) -> Int {
+        let degrees = atan2(input.right, input.forward) * 180 / .pi  // 0 = straight out, 90 = right
+        return Int((degrees + 360 + 22.5).truncatingRemainder(dividingBy: 360) / 45)
+    }
+
+    /// `sector`, but keeps the previous direction until the hand is 10° past the boundary, so wording doesn't flicker.
+    private func steadySector(_ input: Input) -> Int {
+        var sector = Self.sector(input)
+        if let last = lastSector, last != sector {
+            let degrees = atan2(input.right, input.forward) * 180 / .pi
+            var fromLast = abs(degrees - Double(last) * 45).truncatingRemainder(dividingBy: 360)
+            if fromLast > 180 { fromLast = 360 - fromLast }
+            if fromLast < 22.5 + 10 { sector = last }
+        }
+        lastSector = sector
+        return sector
+    }
+
+    /// "Out and right, 6 inches."
     static func phrase(_ direction: String, _ meters: Double) -> String {
         "\(direction), \(inches(meters))."
     }

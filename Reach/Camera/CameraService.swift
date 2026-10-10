@@ -21,9 +21,9 @@ final class CameraService: NSObject, ARSessionDelegate {
     override init() {
         super.init()
         configuration.planeDetection = [.horizontal]
-        // 4:3 shows more of the table's width than 16:9; 30 fps halves the per-second work.
+        // 4:3 shows more of the table's width than 16:9; 60 fps keeps a fast-moving finger in view.
         let formats = ARWorldTrackingConfiguration.supportedVideoFormats.filter {
-            $0.framesPerSecond == 30 && $0.imageResolution.width <= 1920
+            $0.framesPerSecond == 60 && $0.imageResolution.width <= 1920
         }
         if let format = formats.first(where: { $0.imageResolution.width * 3 == $0.imageResolution.height * 4 }) ?? formats.first {
             configuration.videoFormat = format
@@ -51,9 +51,24 @@ final class CameraService: NSObject, ARSessionDelegate {
               (try? device.lockForConfiguration()) != nil else { return }
         if device.isAutoFocusRangeRestrictionSupported { device.autoFocusRangeRestriction = .near }
         if device.isSmoothAutoFocusSupported { device.isSmoothAutoFocusEnabled = false }
-        let cap = CMTime(value: 1, timescale: 100)
+        let cap = CMTime(value: 1, timescale: 200)
         let format = device.activeFormat
         if format.minExposureDuration <= cap, cap <= format.maxExposureDuration { device.activeMaxExposureDuration = cap }
+        device.unlockForConfiguration()
+    }
+
+    /// Focuses once on `point` (landscape-normalized) and holds that focus, so the camera doesn't hunt when the
+    /// hand moves in. At table distance the hand stays sharp enough for tracking. Nil = back to continuous focus.
+    func lockFocus(at point: CGPoint?) {
+        guard let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera,
+              (try? device.lockForConfiguration()) != nil else { return }
+        if let point, device.isFocusPointOfInterestSupported, device.isFocusModeSupported(.autoFocus) {
+            device.focusPointOfInterest = point
+            device.focusMode = .autoFocus  // one focus pass, then stays locked
+        } else if device.isFocusModeSupported(.continuousAutoFocus) {
+            if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5) }
+            device.focusMode = .continuousAutoFocus
+        }
         device.unlockForConfiguration()
     }
 

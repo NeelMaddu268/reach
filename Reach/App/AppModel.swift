@@ -28,6 +28,8 @@ final class AppModel {
     /// Label to announce ("Found keys. 14 inches ahead…") once the next pin has real distances.
     @ObservationIgnored private var pendingAnnouncement: String?
     @ObservationIgnored private var smoothedAbove: Double?
+    /// Focus is locked on the target until guidance ends (see CameraService.lockFocus).
+    @ObservationIgnored private var focusLocked = false
     @ObservationIgnored private var lastProcessed: TimeInterval = 0
     // Main only:
     @ObservationIgnored private var relocating = false
@@ -150,6 +152,7 @@ final class AppModel {
             self.pendingBox = self.anchor == nil ? box : nil
             self.pendingAnnouncement = label
             self.smoothedAbove = nil
+            self.focusLocked = false  // refocus on the new target with the next frame
             self.guide.start()
         }
     }
@@ -159,6 +162,10 @@ final class AppModel {
         anchor = nil
         pendingBox = nil
         pendingAnnouncement = nil
+        if focusLocked {
+            camera.lockFocus(at: nil)
+            focusLocked = false
+        }
     }
 
     /// Tracking came back after being lost: ask Gemini again in case the world moved under the pin.
@@ -199,7 +206,7 @@ final class AppModel {
             snapshotRequests.forEach { $0(snapshot) }
             snapshotRequests.removeAll()
         }
-        guard time - lastProcessed >= 1.0 / 32 else { return }  // at most ~30 Hz, even if ARKit runs at 60
+        guard time - lastProcessed >= 1.0 / 65 else { return }  // every frame at up to 60 fps
         let frameInterval = time - lastProcessed
         lastProcessed = time
 
@@ -214,10 +221,18 @@ final class AppModel {
         }
         let trackingNote = Self.note(for: frame.camera.trackingState)
         let box = anchor?.box(in: frame.camera) ?? pendingBox
+        if let box, !focusLocked, guide.state == .guiding || guide.state == .lost {
+            camera.lockFocus(at: FrameGeometry(frame: frame).landscapePoint(CGPoint(x: box.midX, y: box.midY)))
+            focusLocked = true
+        }
         let input = guideInput(frame: frame, finger: finger, box: box, trackingLost: trackingNote != nil)
         let output = guide.update(input, time: time, tuning: tuning)
         audio.setTone(output.tone)
-        if output.event == .locked { audio.ding() }
+        if output.event == .locked {
+            audio.ding()
+            camera.lockFocus(at: nil)
+            focusLocked = false
+        }
         var announcement: String?
         if let label = pendingAnnouncement, let input {
             announcement = Guide.announcement(label, input)

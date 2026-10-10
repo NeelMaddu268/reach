@@ -12,7 +12,7 @@ final class HandTracker {
     /// Ignore finger joints below this Vision confidence. Low on purpose: clutter behind the finger lowers it.
     var minConfidence: Float = 0.2
     /// Keep reporting the last finger through dropouts shorter than this (seconds).
-    var holdTime: TimeInterval = 0.4
+    var holdTime: TimeInterval = 0.6
     /// Smoothing, see `Tuning`.
     var restCutoff = 2.5
     var speedResponse = 15.0
