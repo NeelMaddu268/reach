@@ -4,17 +4,20 @@ import Vision
 final class HandTracker {
     /// Ignore fingertip estimates below this Vision confidence.
     var minConfidence: Float = 0.3
-    /// 0 = raw, toward 1 = smoother but laggier (exponential moving average).
-    var smoothing: CGFloat = 0.5
     /// Keep reporting the last fingertip through dropouts shorter than this (seconds).
     var holdTime: TimeInterval = 0.25
+    /// Smoothing, see `Tuning`.
+    var restCutoff = 2.5
+    var speedResponse = 15.0
 
     private let request: VNDetectHumanHandPoseRequest = {
         let request = VNDetectHumanHandPoseRequest()
         request.maximumHandCount = 1
         return request
     }()
-    private var smoothed: CGPoint?
+    private var filterX = OneEuroFilter()
+    private var filterY = OneEuroFilter()
+    private var fingertip: CGPoint?
     private var lastSeen: TimeInterval = 0
 
     /// Returns the smoothed fingertip, or nil when no hand has been seen for `holdTime`.
@@ -25,17 +28,55 @@ final class HandTracker {
         if let hand = request.results?.first,
            let tip = try? hand.recognizedPoint(.indexTip),
            tip.confidence >= minConfidence {
-            let raw = CGPoint(x: tip.location.x, y: 1 - tip.location.y)  // Vision's origin is bottom-left
-            if let previous = smoothed {
-                smoothed = CGPoint(x: previous.x + (raw.x - previous.x) * (1 - smoothing),
-                                   y: previous.y + (raw.y - previous.y) * (1 - smoothing))
-            } else {
-                smoothed = raw
+            if fingertip == nil {
+                filterX.reset()
+                filterY.reset()
             }
+            filterX.minCutoff = restCutoff
+            filterY.minCutoff = restCutoff
+            filterX.beta = speedResponse
+            filterY.beta = speedResponse
+            fingertip = CGPoint(x: filterX.filter(tip.location.x, time: time),
+                                y: filterY.filter(1 - tip.location.y, time: time))  // Vision's origin is bottom-left
             lastSeen = time
         } else if time - lastSeen > holdTime {
-            smoothed = nil
+            fingertip = nil
         }
-        return smoothed
+        return fingertip
+    }
+}
+
+/// One Euro filter (Casiez et al. 2012): smooths hard when the signal is still, follows closely when it moves fast.
+struct OneEuroFilter {
+    var minCutoff = 2.5  // Hz
+    var beta = 15.0
+    var derivativeCutoff = 1.0  // Hz
+
+    private var value: Double?
+    private var derivative = 0.0
+    private var lastTime: TimeInterval = 0
+
+    mutating func reset() {
+        value = nil
+        derivative = 0
+    }
+
+    mutating func filter(_ x: Double, time: TimeInterval) -> Double {
+        guard let previous = value else {
+            value = x
+            lastTime = time
+            return x
+        }
+        let dt = max(time - lastTime, 0.001)
+        derivative += Self.alpha(cutoff: derivativeCutoff, dt: dt) * ((x - previous) / dt - derivative)
+        let filtered = previous + Self.alpha(cutoff: minCutoff + beta * abs(derivative), dt: dt) * (x - previous)
+        value = filtered
+        lastTime = time
+        return filtered
+    }
+
+    private static func alpha(cutoff: Double, dt: Double) -> Double {
+        let tau = 1 / (2 * .pi * cutoff)
+        return 1 / (1 + tau / dt)
     }
 }

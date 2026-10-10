@@ -15,13 +15,13 @@ Demo setup: a blindfolded teammate wears the phone on a chest mount aimed down a
 - `App/`: `ReachApp`, `AppModel` (owns the camera and the per-frame pipeline), `AppConfig`.
 - `Camera/CameraService`: back wide camera, 1280×720 @ 30 fps, portrait BGRA buffers on a serial frame queue. `CameraPreview`: aspect-fit preview layer.
 - `Perception/HandTracker`: `VNDetectHumanHandPoseRequest` → index fingertip (confidence-gated, smoothed, held through short dropouts).
-- `Perception/ObjectTracker`: `VNTrackObjectRequest` seeded from a normalized box; reports box + confidence; flags "lost". *(step 2)*
+- `Perception/ObjectTracker`: `VNTrackObjectRequest` seeded from a normalized box; reports box + confidence; flags "lost"; holds the box still while the fingertip is near it (the hand would drag the tracker).
 - `Perception/ObjectLocator`: Gemini `generateContent` with the JPEG frame + query → label + `box_2d` → normalized rect. *(step 3)*
-- `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost → relocate). *(step 2)*
-- `Audio/AudioGuide`: AVAudioEngine sine tone with pan, pitch and beep cadence, plus a lock ding and speech. *(step 2)*
+- `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost → relocate), plus the fingertip → lock-zone math. `Tuning` holds the live-adjustable feel knobs.
+- `Audio/AudioGuide`: AVAudioEngine sine tone with pan, pitch and beep cadence, plus a lock ding and speech (with an Audio/Clips/ hook).
 - `Voice/Commands`: push-to-talk, on-device `SFSpeechRecognizer`, parses "find (my) X", "what's this/that", "stop". *(step 3)*
 - `Reader`: `VNRecognizeTextRequest` + Gemini one-sentence answer → speech. *(step 4)*
-- `UI/`: `ContentView`, `DebugOverlay` (judge view), `StatusHUD`.
+- `UI/`: `ContentView` (+ `TargetPicker`: tap or drag to seed), `DebugOverlay` (judge view), `StatusHUD`, `TuningSheet`.
 
 ## Conventions
 

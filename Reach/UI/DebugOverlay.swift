@@ -1,33 +1,30 @@
 import SwiftUI
 
-/// Maps normalized image coordinates (origin top-left) onto the screen, matching the aspect-fit preview.
-enum ImageSpace {
-    static let aspect: CGFloat = 720.0 / 1280.0  // portrait 1280×720 frames
-
-    static func fitRect(in size: CGSize) -> CGRect {
-        var width = size.width, height = size.width / aspect
-        if height > size.height {
-            height = size.height
-            width = height * aspect
-        }
-        return CGRect(x: (size.width - width) / 2, y: (size.height - height) / 2, width: width, height: height)
-    }
-}
-
-extension CGRect {
-    func point(atNormalized p: CGPoint) -> CGPoint {
-        CGPoint(x: minX + p.x * width, y: minY + p.y * height)
-    }
-}
-
 /// Mirrored-to-laptop judge view: what Reach sees and is tracking.
 struct DebugOverlay: View {
     let model: AppModel
     let imageRect: CGRect
 
     var body: some View {
-        let tip = model.fingertip  // read here (not inside Canvas) so Observation redraws on change
+        // Read here (not inside Canvas) so Observation redraws on change.
+        let tip = model.fingertip, box = model.targetBox, zone = model.lockZone, state = model.state
         Canvas { context, _ in
+            if let zone {
+                context.stroke(Path(imageRect.rect(atNormalized: zone)), with: .color(.white.opacity(0.6)),
+                               style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+            }
+            if let box {
+                let rect = imageRect.rect(atNormalized: box)
+                context.stroke(Path(rect), with: .color(Self.color(for: state)), lineWidth: 3)
+                if state == .guiding || state == .lost {
+                    // From the fingertip, or from the user's body (bottom center) when no hand is in view.
+                    var line = Path()
+                    line.move(to: imageRect.point(atNormalized: tip ?? CGPoint(x: 0.5, y: 1)))
+                    line.addLine(to: CGPoint(x: rect.midX, y: rect.midY))
+                    context.stroke(line, with: .color(.yellow.opacity(tip == nil ? 0.4 : 0.9)),
+                                   style: StrokeStyle(lineWidth: 2, dash: tip == nil ? [4, 4] : []))
+                }
+            }
             if let tip {
                 let p = imageRect.point(atNormalized: tip)
                 let dot = CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20)
@@ -37,6 +34,14 @@ struct DebugOverlay: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    static func color(for state: Guide.State) -> Color {
+        switch state {
+        case .locked: .green
+        case .lost: .orange
+        case .idle, .guiding: .yellow
+        }
     }
 }
 
@@ -56,6 +61,6 @@ struct StatusHUD: View {
         if let error = model.cameraError { return error }
         let hand = model.fingertip == nil ? "hand –" : "hand ✓"
         let key = AppConfig.geminiAPIKey.isEmpty ? "key ✗" : "key ✓"
-        return "\(hand)  \(Int(model.fps.rounded())) fps  \(Int(model.latencyMs)) ms  \(key)"
+        return "\(model.state.rawValue)  \(hand)  \(Int(model.fps.rounded())) fps  \(Int(model.latencyMs)) ms  \(key)"
     }
 }

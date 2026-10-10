@@ -14,8 +14,9 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     /// Called on the frame queue with each frame and its capture time (host clock, seconds).
     var onFrame: ((CVPixelBuffer, TimeInterval) -> Void)?
 
+    /// Serial queue that delivers frames; per-frame state can be changed safely by dispatching here.
+    let frameQueue = DispatchQueue(label: "reach.camera.frames", qos: .userInteractive)
     private let sessionQueue = DispatchQueue(label: "reach.camera.session")
-    private let frameQueue = DispatchQueue(label: "reach.camera.frames", qos: .userInteractive)
     private let output = AVCaptureVideoDataOutput()
 
     func start() async throws {
@@ -61,6 +62,24 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             try device.lockForConfiguration()
             device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 30)
             device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 30)
+            device.unlockForConfiguration()
+        }
+    }
+
+    /// Locked while guiding, so brightness doesn't shift as the hand comes into view and throw off the tracker.
+    /// Not locked at launch: that would freeze whatever the camera saw while the phone was being mounted.
+    func setExposureLocked(_ locked: Bool) {
+        sessionQueue.async {
+            guard let device = (self.session.inputs.first as? AVCaptureDeviceInput)?.device else { return }
+            do {
+                try device.lockForConfiguration()
+            } catch {
+                return
+            }
+            let exposure: AVCaptureDevice.ExposureMode = locked ? .locked : .continuousAutoExposure
+            let whiteBalance: AVCaptureDevice.WhiteBalanceMode = locked ? .locked : .continuousAutoWhiteBalance
+            if device.isExposureModeSupported(exposure) { device.exposureMode = exposure }
+            if device.isWhiteBalanceModeSupported(whiteBalance) { device.whiteBalanceMode = whiteBalance }
             device.unlockForConfiguration()
         }
     }
