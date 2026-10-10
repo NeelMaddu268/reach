@@ -22,7 +22,8 @@ final class HandTracker {
 
     /// Returns the smoothed fingertip, or nil when no hand has been seen for `holdTime`.
     func process(_ pixelBuffer: CVPixelBuffer, time: TimeInterval) -> CGPoint? {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up)
+        // ARKit frames are landscape; .right reads them upright, so results come out in portrait image space.
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
         try? handler.perform([request])
 
         if let hand = request.results?.first,

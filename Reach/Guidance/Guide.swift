@@ -7,28 +7,43 @@ final class Guide {
     enum State: String { case idle, locating, guiding, lost, locked }
     enum Event { case locked, lost, found }
 
+    struct Target {
+        var box: CGRect
+        /// ARKit tracking is degraded, so the box may be off.
+        var isLost: Bool
+    }
+
     struct Output {
         var tone = AudioGuide.Tone.silent
         var event: Event?
         var lockZone: CGRect?
+        /// A short spoken direction to say now ("left", "forward", …).
+        var cue: String?
     }
 
-    /// The tracker must stay lost this long before the state changes to `.lost`.
+    /// Tracking must stay degraded this long before the state changes to `.lost`.
     static let lostAfter: TimeInterval = 1
     /// Distance (image widths) at which the tone is at its "far" setting.
     static let maxDistance = 0.8
     /// Smallest lock-zone side (image widths), so small objects stay reachable.
     static let minLockSide = 0.08
-    static let heightInWidths = Double(1 / ImageSpace.aspect)
+    /// Spoken cues stop inside this distance (image widths); the tone does the last stretch.
+    static let quietWithin = 0.12
+    static let cueEvery: TimeInterval = 1.5
+    static var heightInWidths: Double { Double(1 / ImageSpace.aspect) }
 
     private(set) var state = State.idle
     private var insideSince: TimeInterval?
     private var lostSince: TimeInterval?
+    private var handMissingSince: TimeInterval?
+    private var lastCue: (text: String, time: TimeInterval)?
 
     func start() {
         state = .guiding
         insideSince = nil
         lostSince = nil
+        handMissingSince = nil
+        lastCue = nil
     }
 
     /// Waiting for Gemini to find the object.
@@ -40,7 +55,7 @@ final class Guide {
         state = .idle
     }
 
-    func update(fingertip: CGPoint?, target: ObjectTracker.Target?, time: TimeInterval, tuning: Tuning) -> Output {
+    func update(fingertip: CGPoint?, target: Target?, time: TimeInterval, tuning: Tuning) -> Output {
         guard state == .guiding || state == .lost, let target else { return Output() }
         var output = Output()
         let zone = Self.lockZone(around: target.box, margin: tuning.lockMargin)
@@ -76,7 +91,40 @@ final class Guide {
 
         output.tone = Self.tone(dx: offset.dx, dy: offset.dy, inside: inside, tuning: tuning)
         if fingertip == nil { output.tone.volume = 0.35 }
+        if tuning.spokenCues { output.cue = cue(hasHand: fingertip != nil, dx: offset.dx, dy: offset.dy, time: time) }
         return output
+    }
+
+    /// One word for the main direction to move, at most every `cueEvery` seconds, and not repeated too often.
+    private func cue(hasHand: Bool, dx: Double, dy: Double, time: TimeInterval) -> String? {
+        let text: String
+        if hasHand {
+            handMissingSince = nil
+            guard hypot(dx, dy) > Self.quietWithin else { return nil }
+            text = abs(dx) > abs(dy) ? (dx < 0 ? "left" : "right") : (dy > 0 ? "forward" : "back")
+        } else {
+            handMissingSince = handMissingSince ?? time
+            guard time - handMissingSince! > 3 else { return nil }
+            text = "I can't see your hand."
+        }
+        if let lastCue {
+            let gap = time - lastCue.time
+            guard gap >= Self.cueEvery, text != lastCue.text || gap >= (hasHand ? 3 : 6) else { return nil }
+        }
+        lastCue = (text, time)
+        return text
+    }
+
+    /// Where something is, relative to the hand (or body), e.g. "ahead and to your left".
+    static func describe(dx: Double, dy: Double) -> String {
+        let side = abs(dx) < 0.06 ? nil : (dx < 0 ? "to your left" : "to your right")
+        let depth = dy > 0.06 ? "ahead" : (dy < -0.06 ? "close to you" : nil)
+        switch (depth, side) {
+        case let (depth?, side?): return "\(depth) and \(side)"
+        case let (depth?, nil): return "straight \(depth)"
+        case let (nil, side?): return side
+        case (nil, nil): return "right there"
+        }
     }
 
     static func lockZone(around box: CGRect, margin: Double) -> CGRect {

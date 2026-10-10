@@ -12,9 +12,13 @@ struct Tuning: Equatable {
     var pitchFar = 300.0
     var pitchNear = 1100.0
 
-    // Lock: the object box grown by this fraction of its size on each side; hold inside it this long (s).
-    var lockMargin = 0.25
+    // Lock: the object box grown (or, negative, shrunk) by this fraction of its size on each side;
+    // hold inside it this long (s). Gemini's boxes run a little big, hence slightly inside by default.
+    var lockMargin = -0.1
     var lockDwell = 0.4
+
+    /// Say "left", "forward", … while the hand is far; tones only up close.
+    var spokenCues = true
 
     var geminiModel = "gemini-3.6-flash"
 }

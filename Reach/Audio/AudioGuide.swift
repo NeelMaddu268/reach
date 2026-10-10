@@ -69,6 +69,14 @@ final class AudioGuide {
         speech.stopSpeaking(at: .immediate)
         speech.speak(AVSpeechUtterance(string: text))
     }
+
+    /// A short spoken direction; skipped while something else is being said. Call on main.
+    func cue(_ text: String) {
+        guard !speech.isSpeaking, clipPlayer?.isPlaying != true else { return }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = 0.58
+        speech.speak(utterance)
+    }
 }
 
 /// Render-thread synth. Targets arrive through `shared`; everything else is touched only on the render thread.

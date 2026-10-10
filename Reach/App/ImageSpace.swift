@@ -1,11 +1,11 @@
 import CoreGraphics
 
-/// Image space: normalized [0, 1], origin top-left, in the portrait 720×1280 camera frame.
+/// Image space: normalized [0, 1], origin top-left, in the upright (portrait) camera frame.
 enum ImageSpace {
-    /// Width / height of the portrait frame.
-    static let aspect: CGFloat = 720.0 / 1280.0
+    /// Width / height of the portrait frame. Set from the camera format before the UI first draws.
+    static var aspect: CGFloat = 3.0 / 4.0
 
-    /// Where the aspect-fit preview draws the frame inside a view of `size`.
+    /// Where the whole frame fits inside a view of `size`: the preview's frame, and the overlay's mapping.
     static func fitRect(in size: CGSize) -> CGRect {
         var width = size.width, height = size.width / aspect
         if height > size.height {
@@ -23,10 +23,5 @@ extension CGRect {
 
     func rect(atNormalized r: CGRect) -> CGRect {
         CGRect(x: minX + r.minX * width, y: minY + r.minY * height, width: r.width * width, height: r.height * height)
-    }
-
-    /// Converts between our top-left origin and Vision's bottom-left origin (its own inverse).
-    var flippedVertically: CGRect {
-        CGRect(x: minX, y: 1 - maxY, width: width, height: height)
     }
 }

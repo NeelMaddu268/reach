@@ -27,11 +27,11 @@ The status line at the top shows hand detection, fps, latency, and whether the A
 
 | Module | What it does |
 | --- | --- |
-| `Camera/CameraService` | Back wide camera, 1280×720 at 30 fps, portrait BGRA frames |
+| `Camera/CameraService` | ARKit world tracking: camera frames plus how the phone moves |
 | `Perception/HandTracker` | Vision hand pose → index fingertip, confidence-gated and smoothed |
-| `Perception/ObjectTracker` | Vision object tracking from a seed box |
+| `Perception/ObjectAnchor` | Pins the found object to the table in 3D, so its box stays put while the phone moves |
 | `Perception/ObjectLocator` | Gemini finds "X" in a frame and returns a bounding box |
-| `Guidance/Guide` | State machine (idle → locating → guiding → locked) and the fingertip-to-object vector |
+| `Guidance/Guide` | State machine (idle → locating → guiding → locked), the fingertip-to-object vector, and spoken cues |
 | `Audio/AudioGuide` | Synthesized tone: pan, pitch, and beep cadence from the vector, a lock ding, and speech |
 | `Voice/Commands` | Push-to-talk with on-device speech recognition: "find …", "what's this?", "stop" |
 | `Reader` | Text recognition + Gemini → one spoken sentence about what you're holding |
@@ -46,7 +46,7 @@ The status line at the top shows hand detection, fps, latency, and whether the A
 
 ## Built with
 
-- **Apple frameworks:** SwiftUI, AVFoundation (camera capture, AVAudioEngine, AVSpeechSynthesizer), Vision (hand pose, object tracking, text recognition), Speech (on-device recognition)
+- **Apple frameworks:** SwiftUI, ARKit + SceneKit (world tracking, plane detection, camera view), AVFoundation (AVAudioEngine, AVSpeechSynthesizer), Vision (hand pose, text recognition), Speech (on-device recognition)
 - **Google Gemini API** (Flash model): object localization and "what's this?" answers
 - **ElevenLabs:** pre-generated voice clips
 - **XcodeGen:** project generation
