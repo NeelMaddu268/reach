@@ -16,12 +16,12 @@ Demo setup: a blindfolded teammate wears the phone on a chest mount aimed down a
 - `Camera/CameraService`: back wide camera, 1280×720 @ 30 fps, portrait BGRA buffers on a serial frame queue. `CameraPreview`: aspect-fit preview layer.
 - `Perception/HandTracker`: `VNDetectHumanHandPoseRequest` → index fingertip (confidence-gated, smoothed, held through short dropouts).
 - `Perception/ObjectTracker`: `VNTrackObjectRequest` seeded from a normalized box; reports box + confidence; flags "lost"; holds the box still while the fingertip is near it (the hand would drag the tracker).
-- `Perception/ObjectLocator`: Gemini `generateContent` with the JPEG frame + query → label + `box_2d` → normalized rect. *(step 3)*
+- `Perception/ObjectLocator`: Gemini `generateContent` with the JPEG frame + query → label + `box_2d` → normalized rect. Model is picked live in the tuning sheet (3.5 Flash-Lite / 3.6 Flash / 3.8 Flash); 6 s timeout, one retry.
 - `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost → relocate), plus the fingertip → lock-zone math. `Tuning` holds the live-adjustable feel knobs.
 - `Audio/AudioGuide`: AVAudioEngine sine tone with pan, pitch and beep cadence, plus a lock ding and speech (with an Audio/Clips/ hook).
-- `Voice/Commands`: push-to-talk, on-device `SFSpeechRecognizer`, parses "find (my) X", "what's this/that", "stop". *(step 3)*
+- `Voice/Commands`: push-to-talk, on-device `SFSpeechRecognizer`, parses "find (my) X", "what's this/that", "stop". Hold anywhere (`TouchSurface`) or the big `TalkButton`.
 - `Reader`: `VNRecognizeTextRequest` + Gemini one-sentence answer → speech. *(step 4)*
-- `UI/`: `ContentView` (+ `TargetPicker`: tap or drag to seed), `DebugOverlay` (judge view), `StatusHUD`, `TuningSheet`.
+- `UI/`: `ContentView` (+ `TouchSurface`: hold to talk, tap or drag to seed; `TalkButton`), `DebugOverlay` (judge view), `StatusHUD`, `TuningSheet`.
 
 ## Conventions
 

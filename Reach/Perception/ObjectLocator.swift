@@ -23,14 +23,22 @@ struct ObjectLocator {
         }
     }
 
-    static let model = "gemini-3.8-flash"
+    /// Picked live in the tuning sheet. All three returned exact boxes in testing; latency differs.
+    static let models = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"]
     var timeout: TimeInterval = 6
 
     /// Returns nil when Gemini doesn't see the object.
-    func locate(_ query: String, in jpeg: Data) async throws -> Found? {
+    func locate(_ query: String, in jpeg: Data, model: String) async throws -> Found? {
         guard !AppConfig.geminiAPIKey.isEmpty else { throw LocatorError.missingKey }
+        do {
+            return try await request(query, jpeg, model)
+        } catch let error as URLError where error.code == .timedOut {
+            return try await request(query, jpeg, model)  // free-tier latency is spiky: retry once
+        }
+    }
 
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(Self.model):generateContent")!
+    private func request(_ query: String, _ jpeg: Data, _ model: String) async throws -> Found? {
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -43,7 +51,7 @@ struct ObjectLocator {
             "generationConfig": [
                 "responseMimeType": "application/json",
                 "responseSchema": Self.schema,
-                "thinkingConfig": ["thinkingLevel": "low"],
+                "thinkingConfig": ["thinkingLevel": model == "gemini-3.8-flash" ? "low" : "minimal"],  // 3.8 has no "minimal"
             ],
         ])
 

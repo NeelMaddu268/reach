@@ -31,6 +31,11 @@ struct TuningSheet: View {
                     TuningSlider(title: "Hold time (s)", note: "fingertip must stay inside this long",
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
+                Section("Gemini") {
+                    Picker("Model", selection: $model.tuning.geminiModel) {
+                        ForEach(ObjectLocator.models, id: \.self) { Text($0) }
+                    }
+                }
                 Section {
                     Button("Reset to defaults") { model.tuning = Tuning() }
                 }
