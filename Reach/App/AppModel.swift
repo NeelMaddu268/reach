@@ -148,7 +148,7 @@ final class AppModel {
         guard let jpeg else { return nil }
         let start = CACurrentMediaTime()
         defer { locateMs = (CACurrentMediaTime() - start) * 1000 }
-        return try await locator.locate(query, in: jpeg)
+        return try await locator.locate(query, in: jpeg, model: tuning.geminiModel)
     }
 
     // MARK: Frames

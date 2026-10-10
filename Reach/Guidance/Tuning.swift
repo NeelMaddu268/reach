@@ -15,4 +15,6 @@ struct Tuning: Equatable {
     // Lock: the object box grown by this fraction of its size on each side; hold inside it this long (s).
     var lockMargin = 0.25
     var lockDwell = 0.4
+
+    var geminiModel = "gemini-3.6-flash"
 }
