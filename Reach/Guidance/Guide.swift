@@ -1,8 +1,9 @@
 import Foundation
 
-/// Guidance in real distances on the table. A coach speaks short instructions ("Right, 6 inches") while the
-/// hand is off target; a sonar ticks in between (panned toward the object, faster as the hand closes in, a solid
-/// tone once the hand is right over it); touching the object for a moment locks it. Runs on the frame queue.
+/// Guidance on the table. A sonar does most of the work (ticks panned toward the object, faster as the hand
+/// closes in, a solid tone once the hand is right over it). Speech only steps in when needed: the hand heads
+/// the wrong way or stalls ("Out and right."), or is over the object but not down on it ("Lower."). Touching the
+/// object for a moment locks it. Runs on the frame queue.
 final class Guide {
     enum State: String { case idle, locating, guiding, lost, locked }
     enum Event { case locked, lost, found }
@@ -37,7 +38,12 @@ final class Guide {
     static let minLockHalf = 0.03
     /// The fingertip counts as touching within this height above the object's top (meters).
     static let touchHeight = 0.04
-    static let cueEvery: TimeInterval = 1.6
+    /// Speak up when the hand has made no progress for this long…
+    static let stallAfter: TimeInterval = 2
+    /// …or has moved this much farther away than its closest recent point (meters).
+    static let wrongWayBy = 0.04
+    /// Getting this much closer (meters) counts as progress.
+    static let progressBy = 0.015
 
     private(set) var state = State.idle
     private var insideSince: TimeInterval?
@@ -45,6 +51,9 @@ final class Guide {
     private var handMissingSince: TimeInterval?
     private var lastCue: (text: String, time: TimeInterval)?
     private var lastSector: Int?
+    /// Closest the hand has come recently, and when; reset whenever Reach speaks.
+    private var best: (distance: Double, time: TimeInterval)?
+    private var overSince: TimeInterval?
 
     func start() {
         state = .guiding
@@ -53,6 +62,8 @@ final class Guide {
         handMissingSince = nil
         lastCue = nil
         lastSector = nil
+        best = nil
+        overSince = nil
     }
 
     /// Waiting for Gemini to find the object.
@@ -111,53 +122,60 @@ final class Guide {
             volume: input.hasHand ? 1 : 0.35)
 
         if tuning.spokenCues {
-            output.cue = cue(input, outRight: outRight, outForward: outForward, over: over, toGoDown: toGoDown, time: time)
+            output.cue = cue(input, over: over, toGoDown: toGoDown, time: time)
         }
         return output
     }
 
-    /// Which way to move and how far ("Out and right, 8 inches."), or "Lower, …" once right over the object.
-    /// At most every `cueEvery` seconds (sooner when the direction changes), never the same words twice within 4 s.
-    private func cue(_ input: Input, outRight: Double, outForward: Double, over: Bool, toGoDown: Double,
-                     time: TimeInterval) -> String? {
-        let text: String
+    /// Speaks only when needed: the hand heads the wrong way or stalls, or hovers over the object.
+    private func cue(_ input: Input, over: Bool, toGoDown: Double, time: TimeInterval) -> String? {
+        var text: String?
         if !input.hasHand {
+            best = nil
             handMissingSince = handMissingSince ?? time
-            guard time - handMissingSince! > 3 else { return nil }
-            text = "I can't see your hand."
+            if time - handMissingSince! > 3 { text = "I can't see your hand." }
+        } else if over {
+            handMissingSince = nil
+            best = nil
+            // Once on arriving over it, then again if the hand stays hovering.
+            if toGoDown > 0, overSince == nil || time - lastCueTime >= Self.stallAfter + 0.5 { text = Self.lower + "." }
+            overSince = overSince ?? time
         } else {
             handMissingSince = nil
-            if over {
-                guard toGoDown > 0, let above = input.above else { return nil }
-                text = Self.phrase(Self.lower, above)
-            } else {
-                text = Self.phrase(Self.directions[steadySector(input)], hypot(input.right, input.forward))
+            overSince = nil
+            let distance = hypot(input.right, input.forward)
+            if let best, distance > best.distance + Self.wrongWayBy || time - best.time > Self.stallAfter {
+                text = Self.directions[steadySector(input)] + "."
+            }
+            if text != nil || best == nil || distance < best!.distance - Self.progressBy {
+                best = (distance, time)
             }
         }
+        guard let text else { return nil }
+        // Never back to back, and the same words at most every 4 s ("I can't see your hand." every 6 s).
         if let lastCue {
             let gap = time - lastCue.time
-            let sameDirection = lastCue.text.prefix(while: { $0 != "," }) == text.prefix(while: { $0 != "," })
-            guard gap >= (sameDirection ? Self.cueEvery : 0.8), text != lastCue.text || gap >= 4 else { return nil }
+            guard gap >= 1.2, text != lastCue.text || gap >= (input.hasHand ? 4 : 6) else { return nil }
         }
         lastCue = (text, time)
         return text
     }
 
-    /// "Found keys: out and to the right, 14 inches."
+    private var lastCueTime: TimeInterval { lastCue?.time ?? 0 }
+
+    /// "Found keys, out and to the right."
     static func announcement(_ label: String, _ input: Input) -> String {
-        let distance = hypot(input.right, input.forward)
-        guard distance >= 0.05 else { return "Found \(label), right in front of you." }
+        guard hypot(input.right, input.forward) >= 0.05 else { return "Found \(label), right in front of you." }
         let way = ["straight out", "out and to the right", "to the right", "in and to the right",
                    "straight in", "in and to the left", "to the left", "out and to the left"][sector(input)]
-        return "Found \(label): \(way), \(inches(distance))."
+        return "Found \(label), \(way)."
     }
 
     /// Eight ways to move, clockwise from straight out (away from the body). "In" is toward the body.
+    /// Each has a pre-made clip ("Out and right.") from scripts/make_clips.py, as does `lower`.
     static let directions = ["Straight out", "Out and right", "Right", "In and right",
                              "Straight in", "In and left", "Left", "Out and left"]
     static let lower = "Lower"
-    /// Spoken distances snap to these, so every instruction has a pre-made clip (scripts/make_clips.py).
-    static let inchSteps = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 24, 30, 36]
 
     /// Index into `directions` for the way from the hand to the object.
     static func sector(_ input: Input) -> Int {
@@ -176,16 +194,5 @@ final class Guide {
         }
         lastSector = sector
         return sector
-    }
-
-    /// "Out and right, 6 inches."
-    static func phrase(_ direction: String, _ meters: Double) -> String {
-        "\(direction), \(inches(meters))."
-    }
-
-    static func inches(_ meters: Double) -> String {
-        let value = meters / 0.0254
-        let step = inchSteps.min { abs(Double($0) - value) < abs(Double($1) - value) }!
-        return step == 1 ? "1 inch" : "\(step) inches"
     }
 }

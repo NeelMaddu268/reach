@@ -32,11 +32,14 @@ struct TuningSheet: View {
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
                 Section("Voice") {
-                    Toggle("Spoken coaching", isOn: $model.tuning.spokenCues)
+                    Toggle("Speak when needed", isOn: $model.tuning.spokenCues)
                 }
-                Section("Gemini") {
-                    Picker("Model", selection: $model.tuning.geminiModel) {
+                Section("Models") {
+                    Picker("Find (Gemini)", selection: $model.tuning.geminiModel) {
                         ForEach(ObjectLocator.models, id: \.self) { Text($0) }
+                    }
+                    Picker("What's this (Claude)", selection: $model.tuning.claudeModel) {
+                        ForEach(Reader.models, id: \.self) { Text($0) }
                     }
                 }
                 Section {

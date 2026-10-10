@@ -21,6 +21,8 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
         .max { $0.quality.rawValue < $1.quality.rawValue }
     private var player: AVAudioPlayer?
     private var fetch: Task<Void, Never>?
+    /// Called on main with each thing said, for on-screen captions (the judges can't hear the earbuds).
+    var onSpeak: ((String) -> Void)?
 
     override init() {
         super.init()
@@ -89,6 +91,7 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     }
 
     private func speak(_ text: String) {
+        onSpeak?(text)
         setDucked(true)
         if let audio = Self.storedAudio(for: text) {
             play(audio)

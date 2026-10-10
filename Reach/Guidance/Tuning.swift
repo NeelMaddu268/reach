@@ -17,8 +17,10 @@ struct Tuning: Equatable {
     var lockMargin = -0.1
     var lockDwell = 0.4
 
-    /// The coach: "Right, 6 inches", "Down, 3 inches", … Off = sonar only.
+    /// Speak up when the hand heads the wrong way, stalls, or hovers ("Out and right.", "Lower."). Off = sonar only.
     var spokenCues = true
 
     var geminiModel = "gemini-3.6-flash"
+    /// Answers "what's this?".
+    var claudeModel = "claude-opus-5-5"
 }
