@@ -20,7 +20,8 @@ FIXED = [
 
 
 def swift_constant(path, name):
-    return re.search(rf'static let {name} = (.+)', (ROOT / path).read_text()).group(1)
+    """A string or array literal (possibly spanning lines), as JSON text."""
+    return re.search(rf'static let {name} = (\[.*?\]|"[^"]*")', (ROOT / path).read_text(), re.S).group(1)
 
 
 def slug(text):  # must match ElevenLabs.slug in Swift
@@ -34,6 +35,7 @@ def inches(step):
 def phrases():
     steps = json.loads(swift_constant("Reach/Guidance/Guide.swift", "inchSteps"))
     directions = json.loads(swift_constant("Reach/Guidance/Guide.swift", "directions"))
+    directions.append(json.loads(swift_constant("Reach/Guidance/Guide.swift", "lower")))
     return FIXED + [f"{d}, {inches(s)}." for d in directions for s in steps]
 
 
@@ -44,6 +46,10 @@ def main():
     voice = json.loads(swift_constant("Reach/Audio/ElevenLabs.swift", "voiceID"))
     model = json.loads(swift_constant("Reach/Audio/ElevenLabs.swift", "model"))
     CLIPS.mkdir(parents=True, exist_ok=True)
+    wanted = {f"{slug(p)}.mp3" for p in phrases()}
+    for stale in [f for f in CLIPS.glob("*.mp3") if f.name not in wanted]:
+        stale.unlink()
+        print("removed", stale.name)
     todo = [p for p in phrases() if "--force" in sys.argv or not (CLIPS / f"{slug(p)}.mp3").exists()]
 
     def make(text):

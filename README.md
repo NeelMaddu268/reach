@@ -32,7 +32,7 @@ The status line at the top shows hand detection, fps, latency, and whether the A
 | `Perception/ObjectAnchor` | Pins the found object to the table in 3D, so its box stays put while the phone moves |
 | `Perception/ObjectLocator` | Gemini finds "X" in a frame and returns a bounding box |
 | `Perception/FrameGeometry` | LiDAR depth → where the fingertip really is in 3D, including its height above the object |
-| `Guidance/Guide` | Spoken coaching in inches ("Right, 6 inches", "Down, 3 inches"), sonar ticks in between, lock when the fingertip touches |
+| `Guidance/Guide` | Spoken coaching in inches ("Out and right, 8 inches", "Lower, 2 inches"), sonar ticks in between, lock when the fingertip touches |
 | `Audio/AudioGuide` | Sonar and lock ding (synthesized), and an ElevenLabs voice: pre-made clips for fixed phrases, live speech for the rest |
 | `Voice/Commands` | Push-to-talk with on-device speech recognition: "find …", "what's this?", "stop" |
 | `Reader` | Text recognition + Gemini → one spoken sentence about what you're holding |
