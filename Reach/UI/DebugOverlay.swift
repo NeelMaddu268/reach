@@ -67,12 +67,13 @@ struct StatusHUD: View {
         let hand = model.fingertip == nil ? "hand –" : "hand ✓"
         let key = AppConfig.geminiAPIKey.isEmpty ? "key ✗" : "key ✓"
         var lines = ["\(model.state.rawValue)  \(hand)  \(Int(model.fps.rounded())) fps  \(Int(model.latencyMs)) ms  \(key)"]
-        if let readout = model.readout { lines.append(readout) }
         if let note = model.trackingNote { lines.append("AR: \(note)") }
-        if !model.lastHeard.isEmpty || model.locateMs != nil {
-            let gemini = model.locateMs.map { String(format: "gemini %.1f s", $0 / 1000) } ?? ""
-            lines.append("“\(model.lastHeard)”  \(gemini)")
+        if !model.lastHeard.isEmpty || model.locateMs != nil || model.readMs != nil {
+            let gemini = model.locateMs.map { String(format: "  gemini %.1f s", $0 / 1000) } ?? ""
+            let claude = model.readMs.map { String(format: "  claude %.1f s", $0 / 1000) } ?? ""
+            lines.append("heard “\(model.lastHeard)”\(gemini)\(claude)")
         }
+        if let caption = model.caption { lines.append("🔊 \(caption)") }
         return lines.joined(separator: "\n")
     }
 }

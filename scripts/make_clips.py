@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-generates the fixed spoken phrases as ElevenLabs clips in Reach/Audio/Clips/, so they play instantly.
 
-Voice and model come from Reach/Audio/ElevenLabs.swift; distances and directions from Reach/Guidance/Guide.swift;
+Voice and model come from Reach/Audio/ElevenLabs.swift; directions from Reach/Guidance/Guide.swift;
 the key from Config/Secrets.xcconfig. Phrases without a clip are spoken live (and cached on the phone).
 Usage: scripts/make_clips.py [--force]
 """
@@ -15,7 +15,7 @@ CLIPS = ROOT / "Reach/Audio/Clips"
 # Fixed sentences the app says (AppModel / Guide). Keep in sync when adding new ones.
 FIXED = [
     "Got it.", "Got them.", "I can't see your hand.", "I didn't hear anything.",
-    "Say find, then an object.", "I couldn't reach Gemini.", "Reading isn't ready yet.",
+    "Say find, then an object.", "I couldn't reach Gemini.", "Let me see.", "I couldn't read that.",
 ]
 
 
@@ -28,15 +28,10 @@ def slug(text):  # must match ElevenLabs.slug in Swift
     return "-".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
-def inches(step):
-    return "1 inch" if step == 1 else f"{step} inches"
-
-
 def phrases():
-    steps = json.loads(swift_constant("Reach/Guidance/Guide.swift", "inchSteps"))
     directions = json.loads(swift_constant("Reach/Guidance/Guide.swift", "directions"))
     directions.append(json.loads(swift_constant("Reach/Guidance/Guide.swift", "lower")))
-    return FIXED + [f"{d}, {inches(s)}." for d in directions for s in steps]
+    return FIXED + [f"{d}." for d in directions]
 
 
 def main():

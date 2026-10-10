@@ -17,6 +17,7 @@ final class AppModel {
     let audio = AudioGuide()
     @ObservationIgnored private let voice = VoiceInput()
     private let locator = ObjectLocator()
+    private let reader = Reader()
     private let hands = HandTracker()
     private let guide = Guide()
     @ObservationIgnored private let frameTuning = OSAllocatedUnfairLock(initialState: Tuning())
@@ -33,6 +34,7 @@ final class AppModel {
     @ObservationIgnored private var lastProcessed: TimeInterval = 0
     // Main only:
     @ObservationIgnored private var relocating = false
+    @ObservationIgnored private var reading = false
 
     /// Live-adjustable feel, handed to the frame queue on every change.
     var tuning = Tuning() {
@@ -59,11 +61,14 @@ final class AppModel {
     var latencyMs = 0.0
     /// Last Gemini round trip.
     var locateMs: Double?
-    /// Hand → object in inches, for the judge view: "R +5.0  F +14.0  ↓3.2".
-    var readout: String?
+    /// Last Claude round trip ("what's this?").
+    var readMs: Double?
+    /// The last thing Reach said, shown on screen for the judges.
+    var caption: String?
 
     @MainActor
     func start() async {
+        audio.onSpeak = { [weak self] text in self?.caption = text }
         audio.start()
         camera.onFrame = { [weak self] frame in self?.process(frame) }
         camera.onError = { [weak self] error in self?.cameraError = error.localizedDescription }
@@ -94,9 +99,31 @@ final class AppModel {
         lastHeard = heard
         switch Command(heard) {
         case .find(let query): await find(query)
-        case .whatsThis: audio.say("Reading isn't ready yet.")
+        case .whatsThis: await read()
         case .stop: stop()
         case nil: audio.say(heard.isEmpty ? "I didn't hear anything." : "Say find, then an object.")
+        }
+    }
+
+    // MARK: What's this?
+
+    /// Describes what the user is holding up: Vision reads the text, Claude says what it is in one sentence.
+    @MainActor
+    func read() async {
+        guard !reading else { return }
+        reading = true
+        defer { reading = false }
+        audio.say("Let me see.")
+        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        let start = CACurrentMediaTime()
+        do {
+            let answer = try await reader.describe(snapshot.jpeg, model: tuning.claudeModel)
+            readMs = (CACurrentMediaTime() - start) * 1000
+            audio.say(answer)
+        } catch {
+            readMs = (CACurrentMediaTime() - start) * 1000
+            print("Read: \(error.localizedDescription)")
+            audio.say("I couldn't read that.")
         }
     }
 
@@ -241,7 +268,6 @@ final class AppModel {
 
         let state = guide.state
         let zone = box.map { $0.insetBy(dx: -$0.width * tuning.lockMargin, dy: -$0.height * tuning.lockMargin) }
-        let readout = input.map { Self.readout($0) }
         let latency = (CACurrentMediaTime() - time) * 1000
 
         DispatchQueue.main.async {
@@ -249,7 +275,6 @@ final class AppModel {
             self.fingertip = finger?.tip
             self.targetBox = box
             self.lockZone = state == .guiding || state == .lost ? zone : nil
-            self.readout = readout
             self.trackingNote = trackingNote
             if let announcement {
                 self.audio.say(announcement)
@@ -302,12 +327,6 @@ final class AppModel {
         return Guide.Input(right: Double(simd_dot(toObject, axes.right)), forward: Double(simd_dot(toObject, axes.forward)),
                            above: above, halfRight: half.right, halfForward: half.forward,
                            hasHand: finger != nil, trackingLost: trackingLost)
-    }
-
-    private static func readout(_ input: Guide.Input) -> String {
-        let inches = { (meters: Double) in String(format: "%+.1f", meters / 0.0254) }
-        let height = input.above.map { "  ↓" + String(format: "%.1f", $0 / 0.0254) } ?? ""
-        return "\(input.hasHand ? "hand" : "body") → object: R \(inches(input.right))  F \(inches(input.forward))\(height) in"
     }
 
     /// "Got them." for keys and glasses, "Got it." otherwise.
