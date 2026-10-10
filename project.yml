@@ -1,0 +1,43 @@
+name: Reach
+options:
+  bundleIdPrefix: com.neelmaddu
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  Reach:
+    type: application
+    platform: iOS
+    sources:
+      # Synced folder: new files show up in Xcode without re-running xcodegen.
+      - path: Reach
+        type: syncedFolder
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.neelmaddu.reach
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: Reach
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: Reach uses the camera to see the table, find the object you ask for, and follow your hand to it.
+        NSMicrophoneUsageDescription: Reach listens while you hold to talk, so you can say things like "find my keys".
+        NSSpeechRecognitionUsageDescription: Reach turns what you say into commands, on your device.
+        GEMINI_API_KEY: $(GEMINI_API_KEY)
+    scheme: {}
