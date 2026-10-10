@@ -25,6 +25,9 @@ final class AppModel {
     /// A box waiting for ARKit to find the table under it; guided to as a plain 2D box meanwhile.
     @ObservationIgnored private var pendingBox: CGRect?
     @ObservationIgnored private var snapshotRequests: [(Snapshot?) -> Void] = []
+    /// Label to announce ("Found keys. 14 inches ahead…") once the next pin has real distances.
+    @ObservationIgnored private var pendingAnnouncement: String?
+    @ObservationIgnored private var smoothedAbove: Double?
     @ObservationIgnored private var lastProcessed: TimeInterval = 0
     // Main only:
     @ObservationIgnored private var relocating = false
@@ -54,6 +57,8 @@ final class AppModel {
     var latencyMs = 0.0
     /// Last Gemini round trip.
     var locateMs: Double?
+    /// Hand → object in inches, for the judge view: "R +5.0  F +14.0  ↓3.2".
+    var readout: String?
 
     @MainActor
     func start() async {
@@ -120,10 +125,7 @@ final class AppModel {
             return
         }
         targetLabel = result.found.label
-        pin(result.found.box, seenBy: result.camera)
-        let box = result.found.box
-        let offset = Guide.offset(from: fingertip ?? CGPoint(x: 0.5, y: 1), to: box)
-        audio.say("Found \(result.found.label), \(Guide.describe(dx: offset.dx, dy: offset.dy)).")
+        pin(result.found.box, seenBy: result.camera, announcing: result.found.label)
     }
 
     /// Guide the hand to a box tapped or drawn on screen (normalized, origin top-left).
@@ -142,10 +144,12 @@ final class AppModel {
     }
 
     /// Pins `box` to the table using the pose of the camera that saw it (nil = the next frame's camera).
-    private func pin(_ box: CGRect, seenBy seen: ARCamera?) {
+    private func pin(_ box: CGRect, seenBy seen: ARCamera?, announcing label: String? = nil) {
         camera.frameQueue.async {
             self.anchor = seen.flatMap { ObjectAnchor(box: box, seenBy: $0, session: self.camera.session) }
             self.pendingBox = self.anchor == nil ? box : nil
+            self.pendingAnnouncement = label
+            self.smoothedAbove = nil
             self.guide.start()
         }
     }
@@ -154,6 +158,7 @@ final class AppModel {
     private func clearTarget() {
         anchor = nil
         pendingBox = nil
+        pendingAnnouncement = nil
     }
 
     /// Tracking came back after being lost: ask Gemini again in case the world moved under the pin.
@@ -201,7 +206,7 @@ final class AppModel {
         let tuning = frameTuning.withLock { $0 }
         hands.restCutoff = tuning.restCutoff
         hands.speedResponse = tuning.speedResponse
-        let tip = hands.process(frame.capturedImage, time: time)
+        let finger = hands.process(frame.capturedImage, time: time)
 
         if let box = pendingBox, let pinned = ObjectAnchor(box: box, seenBy: frame.camera, session: camera.session) {
             anchor = pinned
@@ -209,21 +214,33 @@ final class AppModel {
         }
         let trackingNote = Self.note(for: frame.camera.trackingState)
         let box = anchor?.box(in: frame.camera) ?? pendingBox
-        let target = box.map { Guide.Target(box: $0, isLost: trackingNote != nil) }
-        let output = guide.update(fingertip: tip, target: target, time: time, tuning: tuning)
+        let input = guideInput(frame: frame, finger: finger, box: box, trackingLost: trackingNote != nil)
+        let output = guide.update(input, time: time, tuning: tuning)
         audio.setTone(output.tone)
         if output.event == .locked { audio.ding() }
+        var announcement: String?
+        if let label = pendingAnnouncement, let input {
+            announcement = Guide.announcement(label, input)
+            pendingAnnouncement = nil
+        }
 
         let state = guide.state
+        let zone = box.map { $0.insetBy(dx: -$0.width * tuning.lockMargin, dy: -$0.height * tuning.lockMargin) }
+        let readout = input.map { Self.readout($0) }
         let latency = (CACurrentMediaTime() - time) * 1000
 
         DispatchQueue.main.async {
             self.state = state
-            self.fingertip = tip
-            self.targetBox = target?.box
-            self.lockZone = output.lockZone
+            self.fingertip = finger?.tip
+            self.targetBox = box
+            self.lockZone = state == .guiding || state == .lost ? zone : nil
+            self.readout = readout
             self.trackingNote = trackingNote
-            if let cue = output.cue { self.audio.cue(cue) }
+            if let announcement {
+                self.audio.say(announcement)
+            } else if let cue = output.cue {
+                self.audio.cue(cue)
+            }
             switch output.event {
             case .locked: self.audio.say(Self.gotIt(self.targetLabel))
             case .found: Task { await self.relocate() }
@@ -234,6 +251,48 @@ final class AppModel {
                 self.fps = self.fps == 0 ? 1 / frameInterval : self.fps * 0.9 + 0.1 / frameInterval
             }
         }
+    }
+
+    /// The object relative to the fingertip in real distances: LiDAR depth places the fingertip in 3D
+    /// (or, without a depth reading, it's assumed at the object's height). With no hand in view, distances
+    /// are from the user's body (the bottom middle of the frame). Frame queue only.
+    private func guideInput(frame: ARFrame, finger: HandTracker.Finger?, box: CGRect?, trackingLost: Bool) -> Guide.Input? {
+        guard var pinned = anchor else { return nil }
+        let geometry = FrameGeometry(frame: frame)
+        guard let axes = geometry.axes(onPlaneAt: pinned.tableY) else { return nil }
+
+        // Learn the object's height from depth at its center, while the hand is nowhere near it.
+        if let box, finger.map({ !box.insetBy(dx: -box.width, dy: -box.height).contains($0.tip) }) ?? true,
+           let top = geometry.point(at: CGPoint(x: box.midX, y: box.midY), percentile: 0.3) {
+            pinned.topY = max(pinned.tableY, pinned.topY + (top.y - pinned.topY) * 0.2)
+            anchor = pinned
+        }
+
+        var hand: simd_float3?
+        var above: Double?
+        if let finger {
+            if let point = geometry.point(at: finger.tip, depthAt: finger.pad) {
+                hand = point
+                let reading = Double(point.y - pinned.topY)
+                above = smoothedAbove.map { $0 + (reading - $0) * 0.5 } ?? reading
+            } else {
+                hand = geometry.point(at: finger.tip, onPlaneAt: pinned.topY)
+            }
+        }
+        smoothedAbove = above
+        guard let from = hand ?? geometry.point(at: CGPoint(x: 0.5, y: 1), onPlaneAt: pinned.tableY) else { return nil }
+
+        let toObject = pinned.center - from
+        let half = pinned.halfExtents(right: axes.right, forward: axes.forward)
+        return Guide.Input(right: Double(simd_dot(toObject, axes.right)), forward: Double(simd_dot(toObject, axes.forward)),
+                           above: above, halfRight: half.right, halfForward: half.forward,
+                           hasHand: finger != nil, trackingLost: trackingLost)
+    }
+
+    private static func readout(_ input: Guide.Input) -> String {
+        let inches = { (meters: Double) in String(format: "%+.1f", meters / 0.0254) }
+        let height = input.above.map { "  ↓" + String(format: "%.1f", $0 / 0.0254) } ?? ""
+        return "\(input.hasHand ? "hand" : "body") → object: R \(inches(input.right))  F \(inches(input.forward))\(height) in"
     }
 
     /// "Got them." for keys and glasses, "Got it." otherwise.

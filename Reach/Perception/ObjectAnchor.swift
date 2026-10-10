@@ -4,7 +4,21 @@ import ARKit
 /// into each new frame keeps the box on the object. (A 2D image tracker drifts whenever the phone moves.)
 struct ObjectAnchor {
     /// The box's corners, cast onto the table plane (world space).
-    private let corners: [simd_float3]
+    let corners: [simd_float3]
+    /// Height of the table surface (world y).
+    let tableY: Float
+    /// Height of the object's top (world y), refined from LiDAR depth while the hand is away from it.
+    var topY: Float
+
+    /// Middle of the object's footprint on the table.
+    var center: simd_float3 { corners.reduce(.zero, +) / Float(corners.count) }
+
+    /// Half the footprint's size along the user's right and forward directions (meters).
+    func halfExtents(right: simd_float3, forward: simd_float3) -> (right: Double, forward: Double) {
+        let offsets = corners.map { $0 - center }
+        return (Double(offsets.map { abs(simd_dot($0, right)) }.max() ?? 0),
+                Double(offsets.map { abs(simd_dot($0, forward)) }.max() ?? 0))
+    }
 
     /// Pins `box` (normalized portrait image coordinates) as seen by `camera`, which may be from an earlier
     /// frame, e.g. the photo Gemini looked at. Nil if ARKit can't find the table under the box yet.
@@ -32,6 +46,8 @@ struct ObjectAnchor {
         }
         guard corners.count == 4 else { return nil }
         self.corners = corners
+        tableY = hit.worldTransform.columns.3.y
+        topY = tableY + 0.01
     }
 
     /// The pinned box in the frame `camera` sees (normalized portrait image coordinates), or nil if it's behind the camera.

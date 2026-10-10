@@ -8,17 +8,18 @@ Demo setup: a blindfolded teammate wears the phone on a chest mount aimed down a
 
 - `project.yml` (XcodeGen) → `xcodegen generate` → `Reach.xcodeproj` (gitignored). `Reach/` is a synced folder, so new files show up without regenerating. Re-run xcodegen only when `project.yml` changes.
 - iOS 18+, iPhone only, portrait. Swift 5 language mode. No third-party packages.
-- Secrets: `Config/Secrets.xcconfig` (gitignored) → Info.plist `GEMINI_API_KEY` → `AppConfig.geminiAPIKey`.
+- Secrets: `Config/Secrets.xcconfig` (gitignored): `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `DEVELOPMENT_TEAM` → Info.plist → `AppConfig`.
 
 ## Modules (one folder each, under `Reach/`)
 
 - `App/`: `ReachApp`, `AppModel` (owns the camera and the per-frame pipeline), `AppConfig`.
 - `Camera/CameraService`: ARKit world tracking (`ARSession`, horizontal plane detection), a 4:3 30 fps format when available; frames arrive on a serial frame queue. `CameraPreview`: `ARSCNView` sized to the frame's aspect so the whole frame shows. `FrameEncoder`: upright JPEG for Gemini/Claude.
-- `Perception/HandTracker`: `VNDetectHumanHandPoseRequest` → index fingertip (confidence-gated, smoothed, held through short dropouts).
+- `Perception/HandTracker`: `VNDetectHumanHandPoseRequest` → index fingertip (low confidence gate for cluttered backgrounds, falls back to extending the finger from its last two joints, One Euro smoothing, held through 0.4 s dropouts) plus a pad point behind the tip for depth.
+- `Perception/FrameGeometry`: per-frame 3D helpers: LiDAR depth (`smoothedSceneDepth`) around an image point → world point; image point → table plane; the user's right/forward axes on the table.
 - `Perception/ObjectAnchor`: pins a found box to the table in world space (raycast from the camera pose of the photo Gemini saw), then projects it into every frame, so the box stays on the object while the phone moves. Replaced a `VNTrackObjectRequest` tracker that drifted whenever the phone moved.
 - `Perception/ObjectLocator`: Gemini `generateContent` with the JPEG frame + query → label + `box_2d` → normalized rect. Model is picked live in the tuning sheet (3.5 Flash-Lite / 3.6 Flash / 3.8 Flash); 6 s timeout, one retry.
-- `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost when ARKit tracking degrades → relocate with Gemini when it recovers), the fingertip → lock-zone math, and spoken cues ("left", "forward", … every ~1.5 s while far; tones only up close). `Tuning` holds the live-adjustable feel knobs.
-- `Audio/AudioGuide`: AVAudioEngine sine tone with pan, pitch and beep cadence, plus a lock ding and speech (with an Audio/Clips/ hook).
+- `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost when ARKit tracking degrades → relocate with Gemini when it recovers). Works in meters on the table: a coach speaks "Right, 6 inches" / "Forward, 3 inches" / "Down, 4 inches" (distances snap to `inchSteps` so every phrase has a clip), a sonar ticks between phrases (pan = side, ticks speed up when close, solid tone when right over it), and lock = fingertip touching (≤ 4 cm above the object's top, from LiDAR) for `lockDwell`. `Tuning` holds the live-adjustable feel knobs.
+- `Audio/AudioGuide`: AVAudioEngine sonar + lock ding; voice = bundled ElevenLabs clip (`Audio/Clips/<slug>.mp3`) → live ElevenLabs (`eleven_v4_turbo`, voice Sarah; cached on disk) → best installed iPhone voice. The sonar ducks while speaking. Regenerate clips with `scripts/make_clips.py` after changing phrases, voice or model.
 - `Voice/Commands`: push-to-talk, on-device `SFSpeechRecognizer`, parses "find (my) X", "what's this/that", "stop". Hold anywhere (`TouchSurface`) or the big `TalkButton`.
 - `Reader`: `VNRecognizeTextRequest` + Gemini one-sentence answer → speech. *(step 4)*
 - `UI/`: `ContentView` (+ `TouchSurface`: hold to talk, tap or drag to seed; `TalkButton`), `DebugOverlay` (judge view), `StatusHUD`, `TuningSheet`.
