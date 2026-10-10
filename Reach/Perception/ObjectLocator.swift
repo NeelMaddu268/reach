@@ -73,10 +73,12 @@ struct ObjectLocator {
 
     private static func prompt(_ query: String) -> String {
         """
-        This photo is from a phone worn on someone's chest, looking down at a table. Find: \(query).
-        If you see it, set found to true, label to a short name for it (like "keys"), and box_2d to \
-        [ymin, xmin, ymax, xmax] normalized to 0-1000, tight around that one object. If several match, \
-        pick the most likely one. If it isn't visible, set found to false and box_2d to [].
+        This photo is from a phone worn on someone's chest, looking down at the table in front of them. Find: \(query).
+        Only set found to true if you're confident this is the object asked for. Set label to a short name for exactly \
+        what you see (like "car keys" or "blue mug"). Set box_2d to [ymin, xmin, ymax, xmax] normalized to 0-1000, \
+        tight around only that object's own pixels: no surrounding table, shadow or neighboring items. If several \
+        match, pick the one closest to the person (nearest the bottom center). If it isn't visible, set found to \
+        false and box_2d to [].
         """
     }
 

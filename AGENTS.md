@@ -13,11 +13,11 @@ Demo setup: a blindfolded teammate wears the phone on a chest mount aimed down a
 ## Modules (one folder each, under `Reach/`)
 
 - `App/`: `ReachApp`, `AppModel` (owns the camera and the per-frame pipeline), `AppConfig`.
-- `Camera/CameraService`: back wide camera, 1280×720 @ 30 fps, portrait BGRA buffers on a serial frame queue. `CameraPreview`: aspect-fit preview layer.
+- `Camera/CameraService`: ARKit world tracking (`ARSession`, horizontal plane detection), a 4:3 30 fps format when available; frames arrive on a serial frame queue. `CameraPreview`: `ARSCNView` sized to the frame's aspect so the whole frame shows. `FrameEncoder`: upright JPEG for Gemini/Claude.
 - `Perception/HandTracker`: `VNDetectHumanHandPoseRequest` → index fingertip (confidence-gated, smoothed, held through short dropouts).
-- `Perception/ObjectTracker`: `VNTrackObjectRequest` seeded from a normalized box; reports box + confidence; flags "lost"; holds the box still while the fingertip is near it (the hand would drag the tracker).
+- `Perception/ObjectAnchor`: pins a found box to the table in world space (raycast from the camera pose of the photo Gemini saw), then projects it into every frame, so the box stays on the object while the phone moves. Replaced a `VNTrackObjectRequest` tracker that drifted whenever the phone moved.
 - `Perception/ObjectLocator`: Gemini `generateContent` with the JPEG frame + query → label + `box_2d` → normalized rect. Model is picked live in the tuning sheet (3.5 Flash-Lite / 3.6 Flash / 3.8 Flash); 6 s timeout, one retry.
-- `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost → relocate), plus the fingertip → lock-zone math. `Tuning` holds the live-adjustable feel knobs.
+- `Guidance/Guide`: state machine idle → locating → guiding → locked (→ lost when ARKit tracking degrades → relocate with Gemini when it recovers), the fingertip → lock-zone math, and spoken cues ("left", "forward", … every ~1.5 s while far; tones only up close). `Tuning` holds the live-adjustable feel knobs.
 - `Audio/AudioGuide`: AVAudioEngine sine tone with pan, pitch and beep cadence, plus a lock ding and speech (with an Audio/Clips/ hook).
 - `Voice/Commands`: push-to-talk, on-device `SFSpeechRecognizer`, parses "find (my) X", "what's this/that", "stop". Hold anywhere (`TouchSurface`) or the big `TalkButton`.
 - `Reader`: `VNRecognizeTextRequest` + Gemini one-sentence answer → speech. *(step 4)*
@@ -25,9 +25,9 @@ Demo setup: a blindfolded teammate wears the phone on a chest mount aimed down a
 
 ## Conventions
 
-- **Image space:** every point/rect passed between modules is normalized `[0, 1]` with the **origin at the top left** of the portrait 720×1280 frame. Image-up ≈ away from the user's body. Convert at the boundary: Vision uses a bottom-left origin; Gemini `box_2d` is `[ymin, xmin, ymax, xmax]` in 0–1000.
+- **Image space:** every point/rect passed between modules is normalized `[0, 1]` with the **origin at the top left** of the upright (portrait) camera frame; `ImageSpace.aspect` is set from the ARKit format. Vision runs with orientation `.right`; ARKit projection uses `.portrait` with the rotated image size as the viewport. Image-up ≈ away from the user's body. Convert at the boundary: Vision uses a bottom-left origin; Gemini `box_2d` is `[ymin, xmin, ymax, xmax]` in 0–1000.
 - Per-frame perception runs on the camera frame queue. Observable UI state is written only on the main queue.
-- The preview is aspect-fit, so `ImageSpace.fitRect(in:)` maps image space to the screen for both drawing and taps.
+- `ImageSpace.fitRect(in:)` is where the whole frame sits on screen: the preview is sized to it, and it maps image space to the screen for drawing and taps.
 
 ## Build check
 

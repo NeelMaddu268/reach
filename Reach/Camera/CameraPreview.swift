@@ -1,29 +1,19 @@
-import AVFoundation
+import ARKit
 import SwiftUI
 
-/// Shows the whole camera frame (aspect fit), so overlay coordinates line up with what Vision sees.
+/// The camera feed. Size this view to `ImageSpace.fitRect(in:)`: ARKit fills its view, so a view with the
+/// frame's aspect shows the whole frame, lined up with the overlay.
 struct CameraPreview: UIViewRepresentable {
-    let session: AVCaptureSession
+    let session: ARSession
 
-    func makeUIView(context: Context) -> PreviewView {
-        let view = PreviewView()
-        view.backgroundColor = .black
-        view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspect
+    func makeUIView(context: Context) -> ARSCNView {
+        let view = ARSCNView()
+        view.session = session
+        view.scene = SCNScene()
+        view.automaticallyUpdatesLighting = false
+        view.rendersCameraGrain = false
         return view
     }
 
-    func updateUIView(_ view: PreviewView, context: Context) {}
-
-    final class PreviewView: UIView {
-        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-        var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            if let connection = previewLayer.connection, connection.isVideoRotationAngleSupported(90) {
-                connection.videoRotationAngle = 90
-            }
-        }
-    }
+    func updateUIView(_ view: ARSCNView, context: Context) {}
 }

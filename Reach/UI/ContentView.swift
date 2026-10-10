@@ -10,6 +10,8 @@ struct ContentView: View {
                 let imageRect = ImageSpace.fitRect(in: geo.size)
                 ZStack {
                     CameraPreview(session: model.camera.session)
+                        .frame(width: imageRect.width, height: imageRect.height)
+                        .position(x: imageRect.midX, y: imageRect.midY)
                         .accessibilityHidden(true)
                     DebugOverlay(model: model, imageRect: imageRect)
                     TouchSurface(imageRect: imageRect,

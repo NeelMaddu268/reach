@@ -26,10 +26,13 @@ struct TuningSheet: View {
                                  value: $model.tuning.pitchNear, range: 500...2000)
                 }
                 Section("Lock") {
-                    TuningSlider(title: "Margin", note: "grow the box by this fraction on each side",
-                                 value: $model.tuning.lockMargin, range: 0...0.6)
+                    TuningSlider(title: "Margin", note: "grow (or, negative, shrink) the box by this fraction on each side",
+                                 value: $model.tuning.lockMargin, range: -0.4...0.6)
                     TuningSlider(title: "Hold time (s)", note: "fingertip must stay inside this long",
                                  value: $model.tuning.lockDwell, range: 0.1...1)
+                }
+                Section("Voice") {
+                    Toggle("Spoken directions", isOn: $model.tuning.spokenCues)
                 }
                 Section("Gemini") {
                     Picker("Model", selection: $model.tuning.geminiModel) {
