@@ -53,6 +53,11 @@ final class AudioGuide {
         synth.shared.withLock { $0.dings += 1 }
     }
 
+    /// Silences the guidance tone (not the ding or speech), e.g. while listening.
+    func setMuted(_ muted: Bool) {
+        synth.shared.withLock { $0.muted = muted }
+    }
+
     /// Plays Audio/Clips/<clip>.mp3 when it's bundled, otherwise speaks `text`. Call on main.
     func say(_ text: String, clip: String? = nil) {
         if let clip, let url = Bundle.main.url(forResource: clip, withExtension: "mp3"),
@@ -71,6 +76,7 @@ private final class Synth {
     struct Shared {
         var tone = AudioGuide.Tone.silent
         var dings = 0
+        var muted = false
     }
 
     static let sampleRate = 48_000.0
@@ -88,7 +94,7 @@ private final class Synth {
             dingsPlayed = target.dings
             dingTime = 0
         }
-        let tone = target.tone
+        let tone = target.muted ? .silent : target.tone
         let left = buffers[0].mData!.assumingMemoryBound(to: Float.self)
         let right = buffers[1].mData!.assumingMemoryBound(to: Float.self)
         let dt = 1 / Self.sampleRate

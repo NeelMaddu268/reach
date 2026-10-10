@@ -1,0 +1,100 @@
+import CoreGraphics
+import Foundation
+
+/// Asks Gemini where an object is in a camera frame.
+struct ObjectLocator {
+    struct Found {
+        var label: String
+        /// Normalized, origin top-left.
+        var box: CGRect
+    }
+
+    enum LocatorError: LocalizedError {
+        case missingKey
+        case http(Int, String)
+        case badReply
+
+        var errorDescription: String? {
+            switch self {
+            case .missingKey: "No Gemini API key"
+            case .http(let status, let body): "Gemini HTTP \(status): \(body.prefix(200))"
+            case .badReply: "Gemini returned something unexpected"
+            }
+        }
+    }
+
+    static let model = "gemini-3.8-flash"
+    var timeout: TimeInterval = 6
+
+    /// Returns nil when Gemini doesn't see the object.
+    func locate(_ query: String, in jpeg: Data) async throws -> Found? {
+        guard !AppConfig.geminiAPIKey.isEmpty else { throw LocatorError.missingKey }
+
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(Self.model):generateContent")!
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfig.geminiAPIKey, forHTTPHeaderField: "x-goog-api-key")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "contents": [["parts": [
+                ["inline_data": ["mime_type": "image/jpeg", "data": jpeg.base64EncodedString()]],
+                ["text": Self.prompt(query)],
+            ]]],
+            "generationConfig": [
+                "responseMimeType": "application/json",
+                "responseSchema": Self.schema,
+                "thinkingConfig": ["thinkingLevel": "low"],
+            ],
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else { throw LocatorError.http(status, String(decoding: data, as: UTF8.self)) }
+
+        let reply = try JSONDecoder().decode(Reply.self, from: data)
+        guard let text = reply.candidates?.first?.content?.parts?.last(where: { $0.thought != true })?.text,
+              let detection = try? JSONDecoder().decode(Detection.self, from: Data(text.utf8))
+        else { throw LocatorError.badReply }
+
+        guard detection.found, detection.box_2d.count == 4 else { return nil }
+        let b = detection.box_2d.map { CGFloat($0) / 1000 }  // [ymin, xmin, ymax, xmax], 0–1000
+        let box = CGRect(x: b[1], y: b[0], width: b[3] - b[1], height: b[2] - b[0])
+        guard box.width > 0, box.height > 0 else { return nil }
+        return Found(label: detection.label, box: box)
+    }
+
+    private static func prompt(_ query: String) -> String {
+        """
+        This photo is from a phone worn on someone's chest, looking down at a table. Find: \(query).
+        If you see it, set found to true, label to a short name for it (like "keys"), and box_2d to \
+        [ymin, xmin, ymax, xmax] normalized to 0-1000, tight around that one object. If several match, \
+        pick the most likely one. If it isn't visible, set found to false and box_2d to [].
+        """
+    }
+
+    private static let schema: [String: Any] = [
+        "type": "OBJECT",
+        "properties": [
+            "found": ["type": "BOOLEAN"],
+            "label": ["type": "STRING"],
+            "box_2d": ["type": "ARRAY", "items": ["type": "INTEGER"]],
+        ],
+        "required": ["found", "label", "box_2d"],
+    ]
+
+    private struct Detection: Decodable {
+        var found: Bool
+        var label: String
+        var box_2d: [Int]
+    }
+
+    private struct Reply: Decodable {
+        struct Candidate: Decodable { var content: Content? }
+        struct Content: Decodable { var parts: [Part]? }
+        struct Part: Decodable {
+            var text: String?
+            var thought: Bool?
+        }
+        var candidates: [Candidate]?
+    }
+}

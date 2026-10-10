@@ -4,7 +4,7 @@ import Foundation
 /// Guidance state machine and the fingertip → object math. Runs on the camera frame queue.
 /// Offsets are in image widths (x and y scaled to the same pixel length); +x = right, +y = away from the body.
 final class Guide {
-    enum State: String { case idle, guiding, lost, locked }
+    enum State: String { case idle, locating, guiding, lost, locked }
     enum Event { case locked, lost, found }
 
     struct Output {
@@ -29,6 +29,11 @@ final class Guide {
         state = .guiding
         insideSince = nil
         lostSince = nil
+    }
+
+    /// Waiting for Gemini to find the object.
+    func beginLocating() {
+        state = .locating
     }
 
     func stop() {

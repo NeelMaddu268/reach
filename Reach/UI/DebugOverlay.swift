@@ -8,6 +8,7 @@ struct DebugOverlay: View {
     var body: some View {
         // Read here (not inside Canvas) so Observation redraws on change.
         let tip = model.fingertip, box = model.targetBox, zone = model.lockZone, state = model.state
+        let label = model.targetLabel
         Canvas { context, _ in
             if let zone {
                 context.stroke(Path(imageRect.rect(atNormalized: zone)), with: .color(.white.opacity(0.6)),
@@ -16,6 +17,10 @@ struct DebugOverlay: View {
             if let box {
                 let rect = imageRect.rect(atNormalized: box)
                 context.stroke(Path(rect), with: .color(Self.color(for: state)), lineWidth: 3)
+                if let label {
+                    context.draw(Text(label).font(.headline).foregroundStyle(Self.color(for: state)),
+                                 at: CGPoint(x: rect.midX, y: rect.minY - 4), anchor: .bottom)
+                }
                 if state == .guiding || state == .lost {
                     // From the fingertip, or from the user's body (bottom center) when no hand is in view.
                     var line = Path()
@@ -40,7 +45,7 @@ struct DebugOverlay: View {
         switch state {
         case .locked: .green
         case .lost: .orange
-        case .idle, .guiding: .yellow
+        case .idle, .locating, .guiding: .yellow
         }
     }
 }
@@ -61,6 +66,11 @@ struct StatusHUD: View {
         if let error = model.cameraError { return error }
         let hand = model.fingertip == nil ? "hand –" : "hand ✓"
         let key = AppConfig.geminiAPIKey.isEmpty ? "key ✗" : "key ✓"
-        return "\(model.state.rawValue)  \(hand)  \(Int(model.fps.rounded())) fps  \(Int(model.latencyMs)) ms  \(key)"
+        var lines = ["\(model.state.rawValue)  \(hand)  \(Int(model.fps.rounded())) fps  \(Int(model.latencyMs)) ms  \(key)"]
+        if !model.lastHeard.isEmpty || model.locateMs != nil {
+            let gemini = model.locateMs.map { String(format: "gemini %.1f s", $0 / 1000) } ?? ""
+            lines.append("“\(model.lastHeard)”  \(gemini)")
+        }
+        return lines.joined(separator: "\n")
     }
 }
