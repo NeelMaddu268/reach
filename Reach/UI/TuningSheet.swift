@@ -19,11 +19,11 @@ struct TuningSheet: View {
                     TuningSlider(title: "Pan curve", note: "< 1 makes small offsets louder on one side",
                                  value: $model.tuning.panCurve, range: 0.3...1.5)
                 }
-                Section("Sonar pitch (Hz)") {
+                Section("Ping pitch (Hz)") {
                     TuningSlider(title: "Far", note: "pitch when the hand is far away",
-                                 value: $model.tuning.pitchFar, range: 150...600)
+                                 value: $model.tuning.pingLow, range: 200...700)
                     TuningSlider(title: "Near", note: "pitch right at the object",
-                                 value: $model.tuning.pitchNear, range: 500...2000)
+                                 value: $model.tuning.pingHigh, range: 500...1500)
                 }
                 Section("Lock") {
                     TuningSlider(title: "Margin", note: "grow (or, negative, shrink) the box by this fraction on each side",
@@ -51,7 +51,7 @@ struct TuningSheet: View {
                     Toggle("Español (Spanish)", isOn: $model.tuning.spanish)
                 }
                 Section("Voice") {
-                    Toggle("Speak when needed", isOn: $model.tuning.spokenCues)
+                    Toggle("Spoken coaching", isOn: $model.tuning.spokenCues)
                 }
                 Section("Models") {
                     Picker("Find (Gemini)", selection: $model.tuning.geminiModel) {

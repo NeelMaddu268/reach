@@ -1,7 +1,7 @@
 import AVFoundation
 import os
 
-/// Earbud audio: the sonar (a ticking sine whose pan, pitch and tick rate come from `Guide`), the lock ding,
+/// Earbud audio: the sonar (soft pings whose pan, pitch and rate come from `Guide`, a hum when over the object), the lock chime,
 /// and the voice. Speech prefers a bundled ElevenLabs clip (Audio/Clips/), then live ElevenLabs (cached on disk),
 /// then the best iPhone voice installed.
 final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
@@ -18,7 +18,7 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     private let speech = AVSpeechSynthesizer()
     /// Speak Spanish: live ElevenLabs with language "es" (the bundled clips are English) and an es-US fallback voice.
     var spanish = false
-    /// No gaps: if live speech is slow (> 1.2 s) or failed in the last 30 s, the iPhone voice speaks right away.
+    /// No gaps: if live speech is slow (> 2.5 s) or failed in the last 30 s, the iPhone voice speaks instead.
     var networkFallback = false
     private var liveVoiceDownUntil = Date.distantPast
     /// The phrase the live voice is fetching; cleared when the iPhone voice takes over or a new phrase starts.
@@ -144,7 +144,7 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
         }
         guard fallback else { return }
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
+            try? await Task.sleep(for: .seconds(2.5))
             guard let self, speakToken == token else { return }
             speakToken = nil
             fetch = nil
@@ -202,7 +202,9 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     }
 }
 
-/// Render-thread synth. Targets arrive through `shared`; everything else is touched only on the render thread.
+/// Render-thread synth: soft marimba-like pings (faster as the hand closes in), a gentle hum when it's right over the
+/// object, a bell chime on lock, and a soft "working" pluck. Targets arrive through `shared`; everything else is
+/// touched only on the render thread.
 private final class Synth {
     struct Shared {
         var tone = AudioGuide.Tone.silent
@@ -213,16 +215,15 @@ private final class Synth {
     }
 
     static let sampleRate = 48_000.0
-    static let tickLength = 0.045  // seconds
     let shared = OSAllocatedUnfairLock(initialState: Shared())
 
     private var target = Shared()
-    private var dingsPlayed = 0
-    private var chirpsPlayed = 0
-    private var chirpTime = 10.0
-    private var phase = 0.0, frequency = 440.0, pan = 0.0, gain = 0.0, duck = 1.0
-    private var beepClock = 0.0
-    private var dingTime = 10.0
+    private var dingsPlayed = 0, chirpsPlayed = 0
+    private var dingTime = 10.0, chirpTime = 10.0
+    private var frequency = 440.0, pan = 0.0, duck = 1.0
+    private var pingLevel = 0.0, humLevel = 0.0
+    private var pingClock = 0.0, pingAge = 10.0, humClock = 0.0
+    private var fundamental = 0.0, overtone = 0.0, fifth = 0.0  // oscillator phases
 
     func render(frameCount: Int, into buffers: UnsafeMutableAudioBufferListPointer) {
         if let latest = shared.withLockIfAvailable({ $0 }) { target = latest }  // never block the audio thread
@@ -238,42 +239,60 @@ private final class Synth {
         let left = buffers[0].mData!.assumingMemoryBound(to: Float.self)
         let right = buffers[1].mData!.assumingMemoryBound(to: Float.self)
         let dt = 1 / Self.sampleRate
-        let glide = 1 - exp(-dt / 0.03)     // ~30 ms pitch/pan/duck glide
-        let envelope = 1 - exp(-dt / 0.004) // ~4 ms tick edges, no clicks
+        let glide = 1 - exp(-dt / 0.03)  // ~30 ms pitch/pan/duck glide
+        let fade = 1 - exp(-dt / 0.02)   // ~20 ms level changes, no clicks
+        let pinging = tone.beepPeriod > 0
 
         for i in 0..<frameCount {
             frequency += (tone.frequency - frequency) * glide
             pan += (tone.pan - pan) * glide
             duck += (Double(target.duck) - duck) * glide
-            beepClock += dt
-            if tone.beepPeriod > 0, beepClock >= tone.beepPeriod { beepClock = 0 }
-            let on = tone.beepPeriod == 0 || beepClock < min(Self.tickLength, tone.beepPeriod / 2)
-            gain += ((on ? tone.volume * duck : 0) - gain) * envelope
+            pingLevel += ((pinging ? tone.volume : 0) - pingLevel) * fade
+            humLevel += ((pinging ? 0 : tone.volume) - humLevel) * fade
 
-            phase += 2 * .pi * frequency * dt
-            if phase > 2 * .pi { phase -= 2 * .pi }
-            let sample = 0.4 * gain * sin(phase)
+            // A new ping each period: struck, then decaying, with a quicker woody overtone.
+            pingClock += dt
+            if pinging, pingClock >= tone.beepPeriod {
+                pingClock = 0
+                pingAge = 0
+            }
+            pingAge += dt
+            humClock += dt
+            fundamental = (fundamental + 2 * .pi * frequency * dt).truncatingRemainder(dividingBy: 2 * .pi)
+            overtone = (overtone + 2 * .pi * frequency * 3.93 * dt).truncatingRemainder(dividingBy: 2 * .pi)
+            fifth = (fifth + 2 * .pi * frequency * 1.5 * dt).truncatingRemainder(dividingBy: 2 * .pi)
+
+            let strike = min(pingAge / 0.002, 1)
+            let ping = strike * exp(-pingAge / 0.12) * (sin(fundamental) + 0.25 * exp(-pingAge / 0.04) * sin(overtone))
+            let hum = 0.45 * (sin(fundamental) + 0.25 * sin(fifth)) * (0.85 + 0.15 * sin(2 * .pi * 3 * humClock))
+            let sample = 0.35 * duck * (pingLevel * ping + humLevel * hum)
+
             let angle = (pan + 1) * .pi / 4  // equal-power pan
-            let ding = (dingTime < 1.5 ? Self.ding(at: dingTime) : 0) + (chirpTime < 0.2 ? Self.chirp(at: chirpTime) : 0)
+            let centered = (dingTime < 2 ? Self.chime(at: dingTime) : 0) + (chirpTime < 0.3 ? Self.pluck(at: chirpTime) : 0)
             dingTime += dt
             chirpTime += dt
-            left[i] = Float(sample * cos(angle) + ding)
-            right[i] = Float(sample * sin(angle) + ding)
+            left[i] = Float(sample * cos(angle) + centered)
+            right[i] = Float(sample * sin(angle) + centered)
         }
     }
 
-    /// Two quick rising blips (880 → 1175 Hz), centered.
-    private static func chirp(at t: Double) -> Double {
-        func blip(_ t: Double, _ frequency: Double) -> Double {
-            t > 0 && t < 0.06 ? sin(2 * .pi * frequency * t) * sin(.pi * t / 0.06) : 0
+    /// "Working on it": two soft rising plucks (660 → 990 Hz), centered.
+    private static func pluck(at t: Double) -> Double {
+        func note(_ t: Double, _ frequency: Double) -> Double {
+            t > 0 ? sin(2 * .pi * frequency * t) * min(t / 0.002, 1) * exp(-t / 0.05) : 0
         }
-        return 0.2 * (blip(t, 880) + blip(t - 0.08, 1175))
+        return 0.15 * (note(t, 660) + note(t - 0.09, 990))
     }
 
-    /// Two rising bell notes, centered.
-    private static func ding(at t: Double) -> Double {
-        var s = sin(2 * .pi * 1046.5 * t) * exp(-t / 0.15)
-        if t > 0.12 { s += sin(2 * .pi * 1568 * (t - 0.12)) * exp(-(t - 0.12) / 0.3) }
-        return 0.25 * s
+    /// Lock: a bright two-note bell (C6 then G6) with bell-like partials, centered.
+    private static func chime(at t: Double) -> Double {
+        func bell(_ t: Double, _ frequency: Double) -> Double {
+            guard t > 0 else { return 0 }
+            let attack = min(t / 0.003, 1)
+            return attack * (sin(2 * .pi * frequency * t) * exp(-t / 0.6)
+                + 0.4 * sin(2 * .pi * frequency * 2.76 * t) * exp(-t / 0.25)
+                + 0.2 * sin(2 * .pi * frequency * 5.40 * t) * exp(-t / 0.12))
+        }
+        return 0.16 * (bell(t, 1046.5) + bell(t - 0.13, 1568))
     }
 }
