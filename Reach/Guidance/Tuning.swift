@@ -66,6 +66,8 @@ struct Tuning: Equatable, Codable {
     var siriShortcuts = true
     /// Debug numbers (fps, latency, hand) under the top bar, and the lock zone on the camera view.
     var showStats = false
+    /// While guiding, re-check every ~2 s where the object is (Gemini Flash-Lite) and re-pin it if someone moved it.
+    var followMovedObjects = true
 }
 
 extension Tuning {

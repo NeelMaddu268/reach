@@ -59,6 +59,7 @@ final class AppModel {
     /// The last held item asked about, kept for one follow-up question.
     @ObservationIgnored private var lastItem: Reader.Item?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
+    @ObservationIgnored private var followTask: Task<Void, Never>?
     @ObservationIgnored private var watchFailures = 0
     // Watch mode, frame queue only: looks a new object needs before it counts, and misses per scene pin.
     @ObservationIgnored private var watchCandidates: [(label: String, anchor: ObjectAnchor)] = []
@@ -357,6 +358,52 @@ final class AppModel {
             print("Check: \(error.localizedDescription)")
             geminiFailed(t("I couldn't read that.", "No pude leer eso."), error)
         }
+    }
+
+    // MARK: Following a moved object
+
+    /// Keeps the pin on the object if someone moves it: while guiding, Gemini (Flash-Lite) re-checks where it is about
+    /// every 2 s, told where it was so it doesn't jump to a lookalike, and it's re-pinned if it moved more than 5 cm.
+    /// Skipped while the hand is on or near it (the hand would hide it).
+    @MainActor
+    private func startFollowing() {
+        followTask?.cancel()
+        guard tuning.followMovedObjects else { return }
+        followTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, !Task.isCancelled else { return }
+                guard state == .guiding || state == .lost, let label = targetLabel, !isListening, !reading, !scanning else { continue }
+                if let tip = fingertip, let box = targetBox,
+                   box.insetBy(dx: -box.width * 0.5, dy: -box.height * 0.5).contains(tip) { continue }
+                await followOnce(label, hint: targetBox)
+            }
+        }
+    }
+
+    @MainActor
+    private func followOnce(_ label: String, hint: CGRect?) async {
+        guard cameraError == nil, let snapshot = await snapshot(),
+              let found = try? await locator.locate(label, in: snapshot.jpeg, model: Self.watchModel, near: hint,
+                                                    spanish: tuning.spanish),
+              targetLabel == label, state == .guiding || state == .lost, !Task.isCancelled else { return }
+        let shift: Float = await withCheckedContinuation { continuation in
+            camera.frameQueue.async {
+                guard let current = self.anchor,
+                      let pinned = ObjectAnchor(box: found.box, seenIn: snapshot.geometry, session: self.camera.session) else {
+                    return continuation.resume(returning: 0)
+                }
+                let shift = simd_distance(simd_float2(pinned.center.x, pinned.center.z), simd_float2(current.center.x, current.center.z))
+                if shift > 0.05 {
+                    self.anchor = pinned
+                    self.recordSighting(label, pinned)
+                }
+                continuation.resume(returning: shift)
+            }
+        }
+        guard shift > 0.05 else { return }
+        targetShownAt = Date()
+        if shift > 0.1 { audio.say(t("The \(label) moved.", "\(Self.capitalized(label)) se movió.")) }
     }
 
     // MARK: Watch mode
@@ -660,10 +707,12 @@ final class AppModel {
     @MainActor
     func find(_ query: String) async {
         stopWatching(saying: false)  // any find ends watch mode
+        followTask?.cancel()
         targetLabel = query
         if let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
             targetLabel = scanned.label
             camera.frameQueue.async { self.startGuiding(to: scanned.anchor, pendingBox: nil, announcing: scanned.label) }
+            startFollowing()
             return
         }
         audio.say(t("Looking for \(query).", "Buscando \(query)."))
@@ -688,6 +737,7 @@ final class AppModel {
         }
         targetLabel = result.found.label
         pin(result.found.box, seenIn: result.geometry, announcing: result.found.label)
+        startFollowing()
     }
 
     /// Guide the hand to a box tapped or drawn on screen (normalized, origin top-left).
@@ -699,6 +749,7 @@ final class AppModel {
     @MainActor
     func stop() {
         stopWatching(saying: false)
+        followTask?.cancel()
         targetLabel = nil
         camera.frameQueue.async {
             self.clearTarget()
@@ -932,6 +983,7 @@ final class AppModel {
             }
             switch output.event {
             case .locked:
+                self.followTask?.cancel()
                 self.audio.say(Self.gotIt(self.targetLabel, spanish: self.tuning.spanish))
                 if let reachTime { self.recordReach(reachTime) }
             case .found: Task { await self.relocate() }

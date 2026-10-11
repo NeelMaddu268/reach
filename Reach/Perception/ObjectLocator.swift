@@ -13,8 +13,14 @@ struct ObjectLocator {
 
     /// Returns nil when Gemini doesn't see the object. With a `reference` photo of the user's own one
     /// ("this is my mug"), Gemini looks for that same object rather than any match.
-    func locate(_ query: String, in jpeg: Data, model: String, reference: Data? = nil, spanish: Bool = false) async throws -> Found? {
+    /// `near`: where it was a moment ago (following a moved object), so Gemini doesn't jump to a lookalike.
+    func locate(_ query: String, in jpeg: Data, model: String, reference: Data? = nil, near hint: CGRect? = nil,
+                spanish: Bool = false) async throws -> Found? {
         var prompt = Self.prompt(query) + (spanish ? "\nWrite label in Spanish." : "")
+        if let hint {
+            let b = [hint.minY, hint.minX, hint.maxY, hint.maxX].map { Int(min(max($0, 0), 1) * 1000) }
+            prompt += "\nA moment ago it was at box_2d \(b). If it's still there, return that one; otherwise find where it is now."
+        }
         if reference != nil {
             prompt = "The first photo shows the person's own \(query). Find that same one, not a similar one, in the second photo.\n"
                 + prompt
