@@ -46,6 +46,7 @@ final class AppModel {
     @ObservationIgnored private var sightings: [String: (label: String, anchor: ObjectAnchor, time: TimeInterval)] = [:]
     /// The latest frame's camera, to say which side a remembered object is on.
     @ObservationIgnored private var lastCamera: ARCamera?
+    @ObservationIgnored private var torch = AutoTorch()
     // Main only:
     @ObservationIgnored private var relocating = false
     @ObservationIgnored private var reading = false
@@ -92,6 +93,7 @@ final class AppModel {
     /// "Reached in 4.8 s", shown big for a few seconds after a lock.
     var reachBanner: String?
     var minimap: Minimap?
+    var torchOn = false
 
     struct LabeledBox {
         var label: String
@@ -473,6 +475,10 @@ final class AppModel {
         lastProcessed = time
 
         let tuning = frameTuning.withLock { $0 }
+        if let change = torch.update(light: frame.lightEstimate?.ambientIntensity, enabled: tuning.autoTorch, time: time) {
+            camera.setTorch(change)
+        }
+        let torchOn = torch.isOn
         hands.restCutoff = tuning.restCutoff
         hands.speedResponse = tuning.speedResponse
         let finger = hands.process(frame.capturedImage, time: time)
@@ -543,6 +549,7 @@ final class AppModel {
             self.trackingNote = trackingNote
             self.sceneBoxes = sceneBoxes
             self.minimap = minimap
+            self.torchOn = torchOn
             self.touchedLabel = touchedLabel
             if let touchedName, !self.isListening {
                 self.audio.say(touchedName)
