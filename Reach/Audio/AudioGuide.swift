@@ -18,6 +18,11 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     private let speech = AVSpeechSynthesizer()
     /// Speak Spanish: live ElevenLabs with language "es" (the bundled clips are English) and an es-US fallback voice.
     var spanish = false
+    /// No gaps: if live speech is slow (> 1.2 s) or failed in the last 30 s, the iPhone voice speaks right away.
+    var networkFallback = false
+    private var liveVoiceDownUntil = Date.distantPast
+    /// The phrase the live voice is fetching; cleared when the iPhone voice takes over or a new phrase starts.
+    private var speakToken: UUID?
     private var player: AVAudioPlayer?
     private var fetch: Task<Void, Never>?
     /// Called on main with each thing said, for on-screen captions (the judges can't hear the earbuds).
@@ -112,21 +117,38 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
             play(audio)
             return
         }
-        guard !AppConfig.elevenLabsAPIKey.isEmpty else {
+        let fallback = networkFallback
+        guard !AppConfig.elevenLabsAPIKey.isEmpty, !(fallback && Date() < liveVoiceDownUntil) else {
             speakWithSystemVoice(text)
             return
         }
         let spanish = spanish
+        let token = UUID()
+        speakToken = token
         fetch = Task { @MainActor [weak self] in
             let audio = try? await ElevenLabs.speech(text, spanish: spanish)
             guard let self, !Task.isCancelled else { return }
-            fetch = nil
             if let audio {
                 Self.cache(audio, for: text)
+            } else if fallback {
+                liveVoiceDownUntil = Date() + 30
+            }
+            guard speakToken == token else { return }  // the iPhone voice already said it; keep the audio for next time
+            speakToken = nil
+            fetch = nil
+            if let audio {
                 play(audio)
             } else {
                 speakWithSystemVoice(text)
             }
+        }
+        guard fallback else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard let self, speakToken == token else { return }
+            speakToken = nil
+            fetch = nil
+            speakWithSystemVoice(text)
         }
     }
 
