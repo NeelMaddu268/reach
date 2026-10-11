@@ -18,13 +18,17 @@ struct ContentView: View {
                         MinimapView(map: map)
                             .position(x: imageRect.maxX - 85, y: imageRect.minY + 85)
                     }
-                    if model.tuning.deadAirKiller {
+                    if model.tuning.deadAirKiller || model.tuning.judgePolish {
                         VStack {
                             Spacer()
-                            CaptionView(heard: model.heardCaption, said: model.caption)
+                            CaptionView(heard: model.heardCaption, said: model.caption, big: model.tuning.deadAirKiller)
                         }
                         .frame(width: imageRect.width - 16, height: imageRect.height - 16)
                         .position(x: imageRect.midX, y: imageRect.midY)
+                    }
+                    if model.tuning.judgePolish, let ms = model.geminiMs {
+                        LatencyChip(milliseconds: ms)
+                            .position(x: imageRect.minX + 75, y: imageRect.minY + 22)
                     }
                     TouchSurface(imageRect: imageRect,
                                  onPick: model.seed,
