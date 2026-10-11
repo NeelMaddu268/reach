@@ -92,8 +92,9 @@ struct TopBar: View {
                     .foregroundStyle(.white.opacity(0.55))
             }
             if model.tuning.showStats {
-                Text(String(format: "%@ · %d fps · %d ms · key %@", model.fingertip == nil ? "no hand" : "hand",
-                            Int(model.fps.rounded()), Int(model.latencyMs), AppConfig.geminiAPIKey.isEmpty ? "✗" : "✓"))
+                Text(String(format: "%@ · %d fps · %d ms · key %@ · lock %@", model.fingertip == nil ? "no hand" : "hand",
+                            Int(model.fps.rounded()), Int(model.latencyMs), AppConfig.geminiAPIKey.isEmpty ? "✗" : "✓",
+                            model.lockNote.isEmpty ? "–" : model.lockNote))
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.55))
             }

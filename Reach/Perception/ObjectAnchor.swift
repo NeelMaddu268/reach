@@ -9,6 +9,8 @@ struct ObjectAnchor {
     let tableY: Float
     /// Height of the object's top (world y), refined from LiDAR depth while the hand is away from it.
     var topY: Float
+    /// The top as LiDAR measured it when pinned; nil without a reading. Careful guidance keeps refinement near it.
+    let measuredTopY: Float?
 
     /// Middle of the object's footprint on the table.
     var center: simd_float3 { corners.reduce(.zero, +) / Float(corners.count) }
@@ -50,6 +52,7 @@ struct ObjectAnchor {
         self.corners = corners
         self.tableY = tableY
         topY = min(max(top ?? tableY + 0.01, tableY), tableY + 0.4)  // objects on a table: 0–40 cm tall
+        measuredTopY = top.map { min(max($0, tableY), tableY + 0.4) }
     }
 
     /// Without depth: an ARKit raycast along the line of sight through the box center, from `camera`'s pose.

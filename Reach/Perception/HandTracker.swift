@@ -16,6 +16,11 @@ final class HandTracker {
     /// Smoothing, see `Tuning`.
     var restCutoff = 2.5
     var speedResponse = 15.0
+    /// Careful guidance: a jump to somewhere else in the frame starts a new track instead of gliding there.
+    var careful = false
+    /// When Vision last saw the hand, and when the current track began (frame time).
+    private(set) var lastSeen: TimeInterval = 0
+    private(set) var trackedSince: TimeInterval = 0
 
     private let request: VNDetectHumanHandPoseRequest = {
         let request = VNDetectHumanHandPoseRequest()
@@ -25,7 +30,6 @@ final class HandTracker {
     private var filterX = OneEuroFilter()
     private var filterY = OneEuroFilter()
     private var finger: Finger?
-    private var lastSeen: TimeInterval = 0
 
     /// Returns the finger, or nil when no hand has been seen for `holdTime`.
     func process(_ pixelBuffer: CVPixelBuffer, time: TimeInterval) -> Finger? {
@@ -34,9 +38,12 @@ final class HandTracker {
         try? handler.perform([request])
 
         if let hand = request.results?.first, let reading = read(hand) {
-            if finger == nil {
+            // About 9 cm on the table in one reading: another hand, not this one moving (~0.03 per frame at 60 fps).
+            let jumped = careful && finger.map { hypot($0.tip.x - reading.tip.x, $0.tip.y - reading.tip.y) > 0.15 } == true
+            if finger == nil || jumped {  // a new hand, or a jump to another one, starts a new track
                 filterX.reset()
                 filterY.reset()
+                trackedSince = time
             }
             filterX.minCutoff = restCutoff
             filterY.minCutoff = restCutoff
