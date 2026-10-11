@@ -43,6 +43,8 @@ struct Tuning: Equatable, Codable {
     var whereDidILeave = false
     /// "This is my mug" saves a reference photo; "find my mug" then looks for that one.
     var myObjects = false
+    /// Flashlight on in a dark room, off when it's bright.
+    var autoTorch = false
 }
 
 extension Tuning {
