@@ -61,6 +61,8 @@ struct Tuning: Equatable, Codable {
     var watchMode = false
     /// Judge view: boxes pop in when results arrive, a Gemini latency chip, a one-line status, captions at the bottom.
     var judgePolish = true
+    /// "Hey Siri, Reach find" / "what's on the table in Reach" start a find or scan. Off = Siri just opens the app.
+    var siriShortcuts = true
 }
 
 extension Tuning {

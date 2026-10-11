@@ -134,7 +134,26 @@ final class AppModel {
         audio.spanish = tuning.spanish
         audio.networkFallback = tuning.networkFallback
         _ = await voice.requestPermissions()  // ask now, not mid-demo
-        audio.say(t(Self.onboarding, "Mantén presionado para hablar, y di encuentra y un objeto."))
+        if SiriRequests.shared.pending == nil || !tuning.siriShortcuts {  // opened by Siri: get straight to it
+            audio.say(t(Self.onboarding, "Mantén presionado para hablar, y di encuentra y un objeto."))
+        }
+        SiriRequests.shared.handler = { [weak self] request in
+            Task { await self?.handleSiri(request) }
+        }
+    }
+
+    /// A find or scan started from Siri.
+    @MainActor
+    private func handleSiri(_ request: SiriRequests.Request) async {
+        guard tuning.siriShortcuts else { return }
+        switch request {
+        case .find(let object):
+            // "my keys" → "keys", the same way a spoken "find my keys" is read.
+            let phrase = (tuning.spanish ? "encuentra " : "find ") + object
+            if case .find(let item) = Command(phrase, spanish: tuning.spanish) { await find(item) }
+        case .scan:
+            await scan()
+        }
     }
 
     static let onboarding = "Hold to talk, then say find and an object."
