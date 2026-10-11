@@ -1,5 +1,7 @@
-/// The "feel" knobs, adjustable live from the tuning sheet.
-struct Tuning: Equatable {
+import Foundation
+
+/// The "feel" knobs and feature switches, adjustable live from the tuning sheet and kept across launches.
+struct Tuning: Equatable, Codable {
     // Fingertip smoothing (One Euro filter).
     var restCutoff = 2.5        // Hz; lower = steadier dot while the hand is still
     var speedResponse = 15.0    // higher = less lag while the hand moves
@@ -21,6 +23,35 @@ struct Tuning: Equatable {
     var spokenCues = true
 
     var geminiModel = "gemini-3.6-flash"
-    /// Answers "what's this?".
+    /// Answers "what's this?" when held-item questions are off.
     var claudeModel = "claude-opus-5-5"
+
+    // Features. With every switch off, find → guide → lock works exactly as it did before they existed.
+
+    /// Questions about a held item ("is this decaf?", "how many do I take?") and "what's this?", answered by Gemini
+    /// from the label only, with one follow-up. Off = "what's this?" goes to the Claude reader.
+    var askAboutItems = true
+    /// Comma-separated. A held item whose printed text mentions one is announced with "Careful, the label says …" first.
+    var allergies = "peanuts"
+}
+
+extension Tuning {
+    /// Saved values laid over the defaults, so settings survive launches and new knobs get their defaults.
+    static func load() -> Tuning {
+        guard let data = UserDefaults.standard.data(forKey: "tuning"),
+              let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let defaults = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Tuning())) as? [String: Any],
+              let merged = try? JSONSerialization.data(withJSONObject: defaults.merging(saved) { _, saved in saved }),
+              let tuning = try? JSONDecoder().decode(Tuning.self, from: merged) else { return Tuning() }
+        return tuning
+    }
+
+    func save() {
+        UserDefaults.standard.set(try? JSONEncoder().encode(self), forKey: "tuning")
+    }
+
+    /// The allergy list, lowercased.
+    var allergyList: [String] {
+        allergies.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
+    }
 }

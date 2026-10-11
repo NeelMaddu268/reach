@@ -9,72 +9,23 @@ struct ObjectLocator {
         var box: CGRect
     }
 
-    enum LocatorError: LocalizedError {
-        case missingKey
-        case http(Int, String)
-        case badReply
-
-        var errorDescription: String? {
-            switch self {
-            case .missingKey: "No Gemini API key"
-            case .http(let status, let body): "Gemini HTTP \(status): \(body.prefix(200))"
-            case .badReply: "Gemini returned something unexpected"
-            }
-        }
-    }
-
-    /// Picked live in the tuning sheet. All three returned exact boxes in testing; latency differs.
-    static let models = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"]
     var timeout: TimeInterval = 6
 
     /// Returns nil when Gemini doesn't see the object.
     func locate(_ query: String, in jpeg: Data, model: String) async throws -> Found? {
-        let text = try await generate(prompt: Self.prompt(query), schema: Self.schema, jpeg: jpeg, model: model)
-        guard let detection = try? JSONDecoder().decode(Detection.self, from: Data(text.utf8)) else { throw LocatorError.badReply }
+        let text = try await Gemini.generate(prompt: Self.prompt(query), images: [jpeg], schema: Self.schema, model: model,
+                                             timeout: timeout)
+        guard let detection = try? JSONDecoder().decode(Detection.self, from: Data(text.utf8)) else { throw Gemini.GeminiError.badReply }
         guard detection.found else { return nil }
         return Self.found(detection.label, detection.box_2d)
     }
 
     /// Every distinct object on the table (up to 12).
     func scan(_ jpeg: Data, model: String) async throws -> [Found] {
-        let text = try await generate(prompt: Self.scanPrompt, schema: Self.scanSchema, jpeg: jpeg, model: model)
-        guard let scan = try? JSONDecoder().decode(Scan.self, from: Data(text.utf8)) else { throw LocatorError.badReply }
+        let text = try await Gemini.generate(prompt: Self.scanPrompt, images: [jpeg], schema: Self.scanSchema, model: model,
+                                             timeout: timeout)
+        guard let scan = try? JSONDecoder().decode(Scan.self, from: Data(text.utf8)) else { throw Gemini.GeminiError.badReply }
         return scan.objects.compactMap { Self.found($0.label, $0.box_2d) }
-    }
-
-    /// One generateContent call with the photo; returns the JSON text of the reply.
-    private func generate(prompt: String, schema: [String: Any], jpeg: Data, model: String) async throws -> String {
-        guard !AppConfig.geminiAPIKey.isEmpty else { throw LocatorError.missingKey }
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
-        var request = URLRequest(url: url, timeoutInterval: timeout)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(AppConfig.geminiAPIKey, forHTTPHeaderField: "x-goog-api-key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "contents": [["parts": [
-                ["inline_data": ["mime_type": "image/jpeg", "data": jpeg.base64EncodedString()]],
-                ["text": prompt],
-            ]]],
-            "generationConfig": [
-                "responseMimeType": "application/json",
-                "responseSchema": schema,
-                "thinkingConfig": ["thinkingLevel": model == "gemini-3.8-flash" ? "low" : "minimal"],  // 3.8 has no "minimal"
-            ],
-        ])
-
-        let data: Data, response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch let error as URLError where error.code == .timedOut {
-            (data, response) = try await URLSession.shared.data(for: request)  // latency is spiky: retry once
-        }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else { throw LocatorError.http(status, String(decoding: data, as: UTF8.self)) }
-        let reply = try JSONDecoder().decode(Reply.self, from: data)
-        guard let text = reply.candidates?.first?.content?.parts?.last(where: { $0.thought != true })?.text else {
-            throw LocatorError.badReply
-        }
-        return text
     }
 
     /// Gemini's box_2d ([ymin, xmin, ymax, xmax], 0–1000) as a normalized rect.
@@ -138,15 +89,5 @@ struct ObjectLocator {
         var found: Bool
         var label: String
         var box_2d: [Int]
-    }
-
-    private struct Reply: Decodable {
-        struct Candidate: Decodable { var content: Content? }
-        struct Content: Decodable { var parts: [Part]? }
-        struct Part: Decodable {
-            var text: String?
-            var thought: Bool?
-        }
-        var candidates: [Candidate]?
     }
 }

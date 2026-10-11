@@ -31,12 +31,17 @@ struct TuningSheet: View {
                     TuningSlider(title: "Hold time (s)", note: "fingertip must stay inside this long",
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
+                Section("Features") {
+                    Toggle("Ask about held items (Gemini)", isOn: $model.tuning.askAboutItems)
+                    TextField("Allergies, comma-separated", text: $model.tuning.allergies)
+                        .textInputAutocapitalization(.never)
+                }
                 Section("Voice") {
                     Toggle("Speak when needed", isOn: $model.tuning.spokenCues)
                 }
                 Section("Models") {
                     Picker("Find (Gemini)", selection: $model.tuning.geminiModel) {
-                        ForEach(ObjectLocator.models, id: \.self) { Text($0) }
+                        ForEach(Gemini.models, id: \.self) { Text($0) }
                     }
                     Picker("What's this (Claude)", selection: $model.tuning.claudeModel) {
                         ForEach(Reader.models, id: \.self) { Text($0) }

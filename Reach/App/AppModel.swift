@@ -20,7 +20,7 @@ final class AppModel {
     private let reader = Reader()
     private let hands = HandTracker()
     private let guide = Guide()
-    @ObservationIgnored private let frameTuning = OSAllocatedUnfairLock(initialState: Tuning())
+    @ObservationIgnored private let frameTuning = OSAllocatedUnfairLock(initialState: Tuning.load())
     // Frame queue only:
     @ObservationIgnored private var anchor: ObjectAnchor?
     /// A box waiting for ARKit to find the table under it; guided to as a plain 2D box meanwhile.
@@ -42,12 +42,15 @@ final class AppModel {
     @ObservationIgnored private var relocating = false
     @ObservationIgnored private var reading = false
     @ObservationIgnored private var scanning = false
+    /// The last held item asked about, kept for one follow-up question.
+    @ObservationIgnored private var lastItem: Reader.Item?
 
     /// Live-adjustable feel, handed to the frame queue on every change.
-    var tuning = Tuning() {
+    var tuning = Tuning.load() {
         didSet {
             let tuning = tuning
             frameTuning.withLock { $0 = tuning }
+            tuning.save()
         }
     }
 
@@ -118,7 +121,10 @@ final class AppModel {
         lastHeard = heard
         switch Command(heard) {
         case .find(let query): await find(query)
-        case .whatsThis: await read()
+        case .whatsThis:
+            if tuning.askAboutItems { await ask(nil) } else { await read() }
+        case .ask(let question):
+            if tuning.askAboutItems { await ask(question) } else { audio.say("Say find, then an object.") }
         case .scan: await scan()
         case .stop: stop()
         case nil: audio.say(heard.isEmpty ? "I didn't hear anything." : "Say find, then an object.")
@@ -143,6 +149,31 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Read: \(error.localizedDescription)")
+            audio.say("I couldn't read that.")
+        }
+    }
+
+    /// A question about the held item (nil = "what's this?"), answered by Gemini from what's printed on it.
+    /// The item is kept for one follow-up ("how many do I take?"); "what's this?" always starts a new one.
+    @MainActor
+    func ask(_ question: String?) async {
+        guard !reading else { return }
+        reading = true
+        defer { reading = false }
+        audio.say("Let me see.")
+        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        let previous = question == nil ? nil : lastItem.flatMap { CACurrentMediaTime() - $0.time < 120 ? $0 : nil }
+        lastItem = nil
+        let start = CACurrentMediaTime()
+        do {
+            let result = try await reader.ask(question, jpeg: snapshot.jpeg, previous: previous,
+                                              allergies: tuning.allergyList, model: tuning.geminiModel)
+            readMs = (CACurrentMediaTime() - start) * 1000
+            if previous == nil { lastItem = result.item }
+            audio.say(result.spoken)
+        } catch {
+            readMs = (CACurrentMediaTime() - start) * 1000
+            print("Ask: \(error.localizedDescription)")
             audio.say("I couldn't read that.")
         }
     }
