@@ -26,7 +26,7 @@ struct ContentView: View {
                 StatusHUD(model: model)
                 Spacer()
                 if model.state == .idle && !model.isListening {
-                    Text("Hold anywhere to talk: “find my keys” or “what’s this?”")
+                    Text("Hold anywhere to talk: “what’s on the table?”, “find my keys”, “what’s this?”")
                         .font(.callout)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)

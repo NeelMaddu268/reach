@@ -9,7 +9,16 @@ struct DebugOverlay: View {
         // Read here (not inside Canvas) so Observation redraws on change.
         let tip = model.fingertip, box = model.targetBox, zone = model.lockZone, state = model.state
         let label = model.targetLabel
+        let scene = model.sceneBoxes, touched = model.touchedLabel
         Canvas { context, _ in
+            // Everything the table scan found; the one under the fingertip is filled.
+            for object in scene {
+                let rect = imageRect.rect(atNormalized: object.box)
+                if object.label == touched { context.fill(Path(rect), with: .color(.cyan.opacity(0.3))) }
+                context.stroke(Path(rect), with: .color(.cyan), lineWidth: 2)
+                context.draw(Text(object.label).font(.caption.bold()).foregroundStyle(.cyan),
+                             at: CGPoint(x: rect.midX, y: rect.maxY + 2), anchor: .top)
+            }
             if let zone {
                 context.stroke(Path(imageRect.rect(atNormalized: zone)), with: .color(.white.opacity(0.6)),
                                style: StrokeStyle(lineWidth: 1, dash: [6, 4]))

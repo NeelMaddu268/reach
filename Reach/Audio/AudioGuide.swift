@@ -90,6 +90,16 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
         speak(text)
     }
 
+    /// Fetches and caches speech for phrases about to be needed (e.g. object names), so they play instantly.
+    func prefetch(_ texts: [String]) {
+        guard !AppConfig.elevenLabsAPIKey.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            for text in texts where Self.storedAudio(for: text) == nil {
+                if let audio = try? await ElevenLabs.speech(text) { Self.cache(audio, for: text) }
+            }
+        }
+    }
+
     private func speak(_ text: String) {
         onSpeak?(text)
         setDucked(true)
