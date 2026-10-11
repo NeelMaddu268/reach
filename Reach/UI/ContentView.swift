@@ -17,7 +17,7 @@ struct ContentView: View {
                         .position(x: imageRect.midX, y: imageRect.midY)
                         .accessibilityHidden(true)
                     DebugOverlay(model: model, imageRect: imageRect)
-                    if let note = model.trackingNote ?? model.cameraError {
+                    if let note = model.lastError ?? model.trackingNote ?? model.cameraError {
                         NoticePill(text: note)
                             .position(x: imageRect.midX, y: imageRect.minY + 26)
                     }
@@ -238,6 +238,7 @@ struct NoticePill: View {
     var body: some View {
         Label(text, systemImage: "exclamationmark.triangle.fill")
             .font(Theme.rounded(13))
+            .lineLimit(3)
             .foregroundStyle(.black)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
