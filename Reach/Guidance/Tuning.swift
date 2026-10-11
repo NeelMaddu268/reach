@@ -39,6 +39,8 @@ struct Tuning: Equatable, Codable {
     var minimap = false
     /// "Careful, mug in the way." when a scanned object sits on the hand's path to the target (needs a table scan).
     var obstacleWarning = false
+    /// "Where are my keys?" answers from where Reach last saw them; off = it starts a find, as before.
+    var whereDidILeave = false
 }
 
 extension Tuning {

@@ -38,6 +38,7 @@ struct TuningSheet: View {
                     Toggle("Reach timer", isOn: $model.tuning.reachTimer)
                     Toggle("Minimap", isOn: $model.tuning.minimap)
                     Toggle("Obstacle warning (after a scan)", isOn: $model.tuning.obstacleWarning)
+                    Toggle("“Where did I leave…?”", isOn: $model.tuning.whereDidILeave)
                 }
                 Section("Voice") {
                     Toggle("Speak when needed", isOn: $model.tuning.spokenCues)

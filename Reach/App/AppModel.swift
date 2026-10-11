@@ -42,6 +42,10 @@ final class AppModel {
     @ObservationIgnored private var guidingSince: TimeInterval = 0
     /// One obstacle warning per reach.
     @ObservationIgnored private var obstacleWarned = false
+    /// Every object pinned so far (by a scan or a find), by lowercased label, with when it was seen.
+    @ObservationIgnored private var sightings: [String: (label: String, anchor: ObjectAnchor, time: TimeInterval)] = [:]
+    /// The latest frame's camera, to say which side a remembered object is on.
+    @ObservationIgnored private var lastCamera: ARCamera?
     // Main only:
     @ObservationIgnored private var relocating = false
     @ObservationIgnored private var reading = false
@@ -135,6 +139,14 @@ final class AppModel {
         case .ask(let question):
             if tuning.askAboutItems { await ask(question) } else { audio.say("Say find, then an object.") }
         case .scan: await scan()
+        case .whereIs(let item):
+            if tuning.whereDidILeave {
+                await whereIs(item)
+            } else if heard.lowercased().contains("where did") {
+                audio.say("Say find, then an object.")  // as before this feature
+            } else {
+                await find(item)
+            }
         case .stop: stop()
         case nil: audio.say(heard.isEmpty ? "I didn't hear anything." : "Say find, then an object.")
         }
@@ -214,6 +226,7 @@ final class AppModel {
             self.scene = objects.compactMap { object in
                 ObjectAnchor(box: object.box, seenBy: snapshot.camera, session: self.camera.session).map { (object.label, $0) }
             }
+            self.scene.forEach { self.recordSighting($0.label, $0.anchor) }
             self.touching = nil
         }
         audio.say(Self.summary(objects.map(\.label)))
@@ -246,12 +259,63 @@ final class AppModel {
         return head(label) == head(query)
     }
 
+    /// A pinned object matching `query`: from the last scan, or (with "where did I leave" on) anywhere Reach has seen one.
     @MainActor
     private func scannedObject(matching query: String) async -> (label: String, anchor: ObjectAnchor)? {
-        await withCheckedContinuation { continuation in
+        let useSightings = tuning.whereDidILeave
+        return await withCheckedContinuation { continuation in
             camera.frameQueue.async {
-                continuation.resume(returning: self.scene.first { Self.matches($0.label, query) })
+                if let scanned = self.scene.first(where: { Self.matches($0.label, query) }) {
+                    return continuation.resume(returning: scanned)
+                }
+                let seen = useSightings ? self.sightings.values.filter { Self.matches($0.label, query) }.max { $0.time < $1.time } : nil
+                continuation.resume(returning: seen.map { ($0.label, $0.anchor) })
             }
+        }
+    }
+
+    // MARK: Where did I leave it?
+
+    /// "Your keys were to your left, 3 minutes ago. Say find keys and I'll take you there."
+    @MainActor
+    func whereIs(_ item: String) async {
+        let answer: String = await withCheckedContinuation { continuation in
+            camera.frameQueue.async {
+                guard let seen = self.sightings.values.filter({ Self.matches($0.label, item) }).max(by: { $0.time < $1.time }) else {
+                    return continuation.resume(returning: "I haven't seen \(item) yet. Say find \(item) and I'll look.")
+                }
+                let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0) } ?? "nearby"
+                let ago = Self.timeAgo(CACurrentMediaTime() - seen.time)
+                continuation.resume(returning: "Your \(seen.label) \(seen.label.hasSuffix("s") ? "were" : "was") \(side), \(ago). Say find \(item) and I'll take you there.")
+            }
+        }
+        audio.say(answer)
+    }
+
+    /// Frame queue only.
+    private func recordSighting(_ label: String, _ pinned: ObjectAnchor) {
+        sightings[label.lowercased()] = (label, pinned, CACurrentMediaTime())
+    }
+
+    /// Which way a pinned object is from where the camera points now.
+    private static func side(of pinned: ObjectAnchor, from camera: ARCamera) -> String {
+        guard let box = pinned.box(in: camera) else { return "behind you" }
+        switch box.midX {
+        case ..<0: return "off to your left"
+        case ..<0.4: return "to your left"
+        case ...0.6: return "in front of you"
+        case ...1: return "to your right"
+        default: return "off to your right"
+        }
+    }
+
+    private static func timeAgo(_ seconds: TimeInterval) -> String {
+        switch seconds {
+        case ..<20: return "just now"
+        case ..<60: return "\(Int(seconds / 10) * 10) seconds ago"
+        case ..<120: return "a minute ago"
+        case ..<3600: return "\(Int(seconds / 60)) minutes ago"
+        default: return "over an hour ago"
         }
     }
 
@@ -317,6 +381,7 @@ final class AppModel {
     private func startGuiding(to pinned: ObjectAnchor?, pendingBox: CGRect?, announcing label: String?) {
         anchor = pinned
         self.pendingBox = pendingBox
+        if let pinned, let label { recordSighting(label, pinned) }
         pendingAnnouncement = label
         pendingAnnouncementSince = CACurrentMediaTime()  // same clock as frame timestamps
         smoothedAbove = nil
@@ -386,6 +451,7 @@ final class AppModel {
         hands.speedResponse = tuning.speedResponse
         let finger = hands.process(frame.capturedImage, time: time)
         let geometry = FrameGeometry(frame: frame)
+        lastCamera = frame.camera
         let fingerPoint = finger.flatMap { geometry.point(at: $0.tip, depthAt: $0.pad) }  // LiDAR, when it has a reading
 
         if let box = pendingBox, let pinned = ObjectAnchor(box: box, seenBy: frame.camera, session: camera.session) {
