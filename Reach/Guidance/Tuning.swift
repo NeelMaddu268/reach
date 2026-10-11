@@ -55,6 +55,8 @@ struct Tuning: Equatable, Codable {
     var networkFallback = true
     /// "How much money is this?": counts the bills it can clearly read, labels each one on screen.
     var moneyReader = false
+    /// "This is my <medicine>" also saves its label text; "is this my <medicine>?" checks a bottle against it.
+    var medicationCheck = false
 }
 
 extension Tuning {
