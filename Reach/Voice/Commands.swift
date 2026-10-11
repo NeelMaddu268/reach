@@ -4,9 +4,10 @@ import Speech
 enum Command: Equatable {
     case find(String)
     case whatsThis
+    case scan
     case stop
 
-    /// Parses "find my keys", "where are my glasses", "what's this", "stop".
+    /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
     init?(_ transcript: String) {
         let text = transcript.lowercased()
             .replacingOccurrences(of: "’", with: "'")
@@ -14,6 +15,12 @@ enum Command: Equatable {
 
         if text.hasPrefix("stop") || text.hasPrefix("cancel") {
             self = .stop
+            return
+        }
+        let scanPhrases = ["what's on the table", "what is on the table", "what's in front of me", "what is in front of me",
+                           "what do you see", "what's here", "look around", "scan"]
+        if scanPhrases.contains(where: text.contains) {
+            self = .scan
             return
         }
         let readPhrases = ["what's this", "what is this", "what's that", "what is that", "what is it", "what's in my hand",

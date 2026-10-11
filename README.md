@@ -2,7 +2,7 @@
 
 Reach guides a blind person's hand to an object on a table.
 
-Say "find my keys." Reach locates the keys in the camera frame, tracks them and your index fingertip every frame, and steers your hand with sound in your earbuds: stereo pan for left and right, pitch and beep rate for how close you are. You hear a ding and "Got them" when your finger reaches them. Hold something up and ask "what's this?" to hear what it is.
+Say "find my keys." Reach locates the keys in the camera frame, tracks them and your index fingertip every frame, and steers your hand with sound in your earbuds: stereo pan for left and right, pitch and beep rate for how close you are. You hear a ding and "Got them" when your finger reaches them. Ask "what's on the table?" to hear everything in front of you, left to right, then run your hand over the table and Reach names whatever your finger touches. Hold something up and ask "what's this?" to hear what it is.
 
 Built at Hacklanta II.
 
