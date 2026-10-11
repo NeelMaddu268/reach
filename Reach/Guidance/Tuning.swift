@@ -10,16 +10,17 @@ struct Tuning: Equatable, Codable {
     var panRange = 0.15
     var panCurve = 0.6          // < 1 makes small offsets easier to hear
 
-    // Sonar pitch from closeness, far → near (Hz). Ticks also speed up as the hand gets closer.
-    var pitchFar = 300.0
-    var pitchNear = 1100.0
+    // Ping pitch from closeness, far → near (Hz). Pings also speed up as the hand gets closer.
+    var pingLow = 440.0
+    var pingHigh = 880.0
 
     // Lock: the object's footprint grown (or, negative, shrunk) by this fraction of its size on each side;
     // the fingertip must touch inside it this long (s). Gemini's boxes run a little big, hence slightly inside.
     var lockMargin = -0.1
     var lockDwell = 0.4
 
-    /// Speak up when the hand heads the wrong way, stalls, or hovers ("Out and right.", "Lower."). Off = sonar only.
+    /// The coach: "Farther and right." about every 1.5 s, "A little left." when close, "Down." when hovering.
+    /// Off = pings only.
     var spokenCues = true
 
     var geminiModel = "gemini-3.6-flash"

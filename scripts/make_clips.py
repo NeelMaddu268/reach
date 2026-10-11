@@ -33,8 +33,8 @@ def slug(text):  # must match ElevenLabs.slug in Swift
 
 def phrases():
     directions = json.loads(swift_constant("Reach/Guidance/Guide.swift", "directions"))
-    directions.append(json.loads(swift_constant("Reach/Guidance/Guide.swift", "lower")))
-    return FIXED + [f"{d}." for d in directions]
+    down = json.loads(swift_constant("Reach/Guidance/Guide.swift", "down"))
+    return FIXED + [f"{d}." for d in directions] + [f"A little {d.lower()}." for d in directions] + [f"{down}."]
 
 
 def main():
