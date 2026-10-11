@@ -16,12 +16,16 @@ enum Command: Equatable {
     case money
     /// "Is this my lisinopril?" (medication check).
     case checkMine(String)
+    /// "Tell me if anything changes" / "stop watching" (watch mode).
+    case watch
+    case stopWatching
 
     /// Commands that belong to features switched on in Tuning. With none on, parsing is exactly as before.
     struct Extras: OptionSet {
         let rawValue: Int
         static let money = Extras(rawValue: 1 << 0)
         static let medicationCheck = Extras(rawValue: 1 << 1)
+        static let watch = Extras(rawValue: 1 << 2)
     }
 
     /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
@@ -96,6 +100,14 @@ extension Command {
                                   : ["how much money", "what bill", "which bill", "count my money", "count the money",
                                      "count this money", "how much cash", "count my cash"]
             if phrases.contains(where: text.contains) { return .money }
+        }
+        if extras.contains(.watch) {
+            let stop = spanish ? ["deja de vigilar", "para de vigilar", "ya no vigiles"] : ["stop watching", "stop looking for changes"]
+            if stop.contains(where: text.contains) { return .stopWatching }
+            let start = spanish ? ["avisame si algo cambia", "vigila la mesa", "empieza a vigilar"]
+                                : ["tell me if anything changes", "let me know if anything changes", "watch the table",
+                                   "keep an eye on the table", "start watching"]
+            if start.contains(where: text.contains) { return .watch }
         }
         if extras.contains(.medicationCheck) {
             let triggers = spanish ? ["es este mi", "es esta mi", "son estos mis", "son estas mis", "es mi", "son mis"]

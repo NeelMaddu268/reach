@@ -55,6 +55,11 @@ final class AppModel {
     @ObservationIgnored private var scanning = false
     /// The last held item asked about, kept for one follow-up question.
     @ObservationIgnored private var lastItem: Reader.Item?
+    @ObservationIgnored private var watchTask: Task<Void, Never>?
+    @ObservationIgnored private var watchFailures = 0
+    // Watch mode, frame queue only: looks a new object needs before it counts, and misses per scene pin.
+    @ObservationIgnored private var watchCandidates: [(label: String, anchor: ObjectAnchor)] = []
+    @ObservationIgnored private var watchMisses: [Int] = []
 
     /// Live-adjustable feel, handed to the frame queue on every change.
     var tuning = Tuning.load() {
@@ -134,6 +139,7 @@ final class AppModel {
         var extras: Command.Extras = []
         if tuning.moneyReader { extras.insert(.money) }
         if tuning.medicationCheck { extras.insert(.medicationCheck) }
+        if tuning.watchMode { extras.insert(.watch) }
         return extras
     }
 
@@ -195,6 +201,8 @@ final class AppModel {
         case .scan: await scan()
         case .money: await countMoney()
         case .checkMine(let name): await checkMine(name)
+        case .watch: startWatching()
+        case .stopWatching: stopWatching(saying: true)
         case .remember(let item):
             if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
@@ -318,6 +326,143 @@ final class AppModel {
         }
     }
 
+    // MARK: Watch mode
+
+    static let watchModel = "gemini-3.5-flash-lite"
+
+    /// "Tell me if anything changes": every ~3 s, a quick scan (Flash-Lite) is compared with the pins, and each
+    /// object that appeared, moved or went is said once. Paused while guiding, listening or reading.
+    @MainActor
+    func startWatching() {
+        watchTask?.cancel()
+        watchFailures = 0
+        audio.say(t("Watching the table. I'll tell you if anything changes.", "Vigilando la mesa. Te aviso si algo cambia."))
+        watchTask = Task { @MainActor [weak self] in
+            var firstLook = true
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, !Task.isCancelled else { return }
+                let busy = isListening || reading || scanning || [.guiding, .lost, .locating].contains(state)
+                if busy { continue }
+                await watchOnce(learnOnly: firstLook && sceneBoxes.isEmpty)  // no scan yet: the first look just learns the table
+                firstLook = false
+            }
+        }
+    }
+
+    @MainActor
+    func stopWatching(saying: Bool) {
+        guard let watchTask else { return }
+        watchTask.cancel()
+        self.watchTask = nil
+        if saying { audio.say(t("Stopped watching.", "Dejé de vigilar.")) }
+    }
+
+    @MainActor
+    private func watchOnce(learnOnly: Bool) async {
+        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        let spanish = tuning.spanish
+        let found: [ObjectLocator.Found]
+        do {
+            found = try await locator.scan(snapshot.jpeg, model: Self.watchModel, spanish: spanish)
+            watchFailures = 0
+        } catch {
+            watchFailures += 1
+            print("Watch: \(error.localizedDescription)")
+            if watchFailures >= 3 {
+                stopWatching(saying: false)
+                geminiFailed(t("I couldn't reach Gemini, so I stopped watching.", "No pude conectar con Gemini, así que dejé de vigilar."))
+            }
+            return
+        }
+        guard watchTask != nil, !Task.isCancelled else { return }
+        let lines: [String] = await withCheckedContinuation { continuation in
+            camera.frameQueue.async {
+                let sightings = found.compactMap { object in
+                    ObjectAnchor(box: object.box, seenBy: snapshot.camera, session: self.camera.session).map { (object.label, $0) }
+                }
+                continuation.resume(returning: self.applyWatch(sightings, camera: snapshot.camera, learnOnly: learnOnly, spanish: spanish))
+            }
+        }
+        if !lines.isEmpty { audio.say(lines.joined(separator: " ")) }
+    }
+
+    /// Compares a fresh look with the scene pins, updates them, and returns what to say. A new object counts once it's
+    /// seen twice in the same spot; a pin counts as gone once it's in view and missed twice. Frame queue only.
+    private func applyWatch(_ sightings: [(label: String, anchor: ObjectAnchor)], camera: ARCamera, learnOnly: Bool,
+                            spanish: Bool) -> [String] {
+        if learnOnly {
+            scene = sightings.sorted { $0.anchor.center.x < $1.anchor.center.x }
+            watchMisses = []
+            watchCandidates = []
+            touching = nil
+            return []
+        }
+        func distance(_ a: ObjectAnchor, _ b: ObjectAnchor) -> Float {
+            simd_distance(simd_float2(a.center.x, a.center.z), simd_float2(b.center.x, b.center.z))
+        }
+        var lines: [String] = []
+        var seen = Set<Int>()
+        var candidates: [(label: String, anchor: ObjectAnchor)] = []
+        for sighting in sightings {
+            let open = scene.indices.filter { !seen.contains($0) }
+            if let same = open.min(by: { distance(scene[$0].anchor, sighting.anchor) < distance(scene[$1].anchor, sighting.anchor) }),
+               distance(scene[same].anchor, sighting.anchor) < 0.06 {
+                seen.insert(same)  // still there
+            } else if let moved = open.first(where: { Self.matches(scene[$0].label, sighting.label)
+                                                       && distance(scene[$0].anchor, sighting.anchor) < 0.6 }) {
+                seen.insert(moved)
+                scene[moved].anchor = sighting.anchor
+                recordSighting(scene[moved].label, sighting.anchor)
+                let side = Self.side(of: sighting.anchor, from: camera, spanish: spanish)
+                lines.append(spanish ? "\(Self.capitalized(scene[moved].label)) se movió \(side)."
+                                     : "The \(scene[moved].label) moved \(side).")
+            } else if watchCandidates.contains(where: { distance($0.anchor, sighting.anchor) < 0.06 }) {
+                scene.append(sighting)
+                seen.insert(scene.count - 1)
+                recordSighting(sighting.label, sighting.anchor)
+                let side = Self.side(of: sighting.anchor, from: camera, spanish: spanish)
+                lines.append(spanish ? "Nuevo \(side): \(sighting.label)." : "Someone put \(Self.withArticle(sighting.label)) down \(side).")
+            } else {
+                candidates.append(sighting)  // one look can be a fluke
+            }
+        }
+        watchCandidates = candidates
+
+        var kept: [(label: String, anchor: ObjectAnchor)] = []
+        var misses: [Int] = []
+        for (index, pin) in scene.enumerated() {
+            if seen.contains(index) {
+                kept.append(pin)
+                misses.append(0)
+                continue
+            }
+            let inView = pin.anchor.box(in: camera).map { CGRect(x: 0.05, y: 0.05, width: 0.9, height: 0.9).contains(CGPoint(x: $0.midX, y: $0.midY)) } ?? false
+            let missed = (index < watchMisses.count ? watchMisses[index] : 0) + (inView ? 1 : 0)
+            if missed >= 2 {
+                let plural = pin.label.hasSuffix("s") && !pin.label.hasSuffix("ss")
+                lines.append(spanish ? "Ya no está: \(pin.label)." : "The \(pin.label) \(plural ? "are" : "is") gone.")
+            } else {
+                kept.append(pin)
+                misses.append(missed)
+            }
+        }
+        if kept.count != scene.count || !lines.isEmpty { touching = nil }
+        scene = kept
+        watchMisses = misses
+        return lines
+    }
+
+    /// "a cup", "an apple", "keys".
+    private static func withArticle(_ label: String) -> String {
+        if label.hasSuffix("s") && !label.hasSuffix("ss") { return label }
+        return ("aeiou".contains(label.prefix(1).lowercased()) ? "an " : "a ") + label
+    }
+
+    private static func capitalized(_ text: String) -> String {
+        text.prefix(1).uppercased() + text.dropFirst()
+    }
+
     // MARK: What's on the table?
 
     /// Gemini lists every object on the table; each is pinned in 3D and named left to right. Afterwards,
@@ -347,6 +492,7 @@ final class AppModel {
             }
             self.scene.forEach { self.recordSighting($0.label, $0.anchor) }
             self.touching = nil
+            self.watchMisses = []
         }
         audio.say(Self.summary(objects.map(\.label), spanish: tuning.spanish))
         // So touch-to-explore names and obstacle warnings play instantly.
@@ -478,6 +624,7 @@ final class AppModel {
     /// Find `query` with Gemini, then guide the hand to it.
     @MainActor
     func find(_ query: String) async {
+        stopWatching(saying: false)  // any find ends watch mode
         targetLabel = query
         if let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
             targetLabel = scanned.label
@@ -514,7 +661,9 @@ final class AppModel {
         pin(box, seenBy: nil)
     }
 
+    @MainActor
     func stop() {
+        stopWatching(saying: false)
         targetLabel = nil
         camera.frameQueue.async {
             self.clearTarget()

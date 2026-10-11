@@ -37,6 +37,7 @@ struct TuningSheet: View {
                     Toggle("Ask about held items (Gemini)", isOn: $model.tuning.askAboutItems)
                     Toggle("Money reader", isOn: $model.tuning.moneyReader)
                     Toggle("Medication check", isOn: $model.tuning.medicationCheck)
+                    Toggle("Watch mode (“tell me if anything changes”)", isOn: $model.tuning.watchMode)
                     TextField("Allergies, comma-separated", text: $model.tuning.allergies)
                         .textInputAutocapitalization(.never)
                     Toggle("Reach timer", isOn: $model.tuning.reachTimer)

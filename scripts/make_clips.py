@@ -18,7 +18,7 @@ FIXED = [
     "Say find, then an object.", "I couldn't reach Gemini.", "Let me see.", "I couldn't read that.",
     "Hold to talk, then say find and an object.", "Looking at the table.", "I don't see anything on the table.",
     "Still looking.", "I can't reach the internet. Tap the object on screen and I'll guide you.",
-    "The camera isn't ready. Try again.",
+    "The camera isn't ready. Try again.", "Watching the table. I'll tell you if anything changes.", "Stopped watching.",
 ]
 
 
