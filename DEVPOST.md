@@ -10,10 +10,10 @@ Apps for blind people can already describe a scene: "there are keys on the table
 
 Reach is an iPhone app worn on a chest mount, with earbuds.
 
-- **"Find my keys."** Hold anywhere on the screen and say it. Reach finds the keys in the camera view and says where they are: *"Found keys, out and to the right."*
-- **Your hand gets guided there.** A sonar ticks in the ear on the keys' side, faster as your hand gets closer, and turns into a steady tone when your hand is right above them. If your hand heads the wrong way or stalls, Reach nudges you ("Out and right."). If you're hovering above the object, it says "Lower."
+- **"Find my keys."** Hold anywhere on the screen and say it. Reach finds the keys in the camera view and says where they are: *"Found keys, farther and to your right."*
+- **Your hand gets guided there.** A sonar ticks in the ear on the keys' side, faster as your hand gets closer, and turns into a steady tone when your hand is right above them. Every second or so Reach also says which way to move ("Farther and right.", "A little left."). If you're hovering above the object, it says "Down."
 - **It knows when you've touched it.** Using the iPhone's LiDAR depth sensor, Reach knows how high your fingertip is, not just where it is in the picture. It only says *"Got them."* (with a ding) when your finger is actually on the object.
-- **"What's on the table?"** Reach names everything in front of you, left to right: *"I see 4 things: keys, blue mug, phone and pill bottle."* Then it becomes **touch to explore**. Run your hand over the table and Reach names each object as your fingertip lands on it, like braille for the tabletop. "Find the mug" afterwards is instant.
+- **"What's on the table?"** Reach names everything in front of you: *"I see 4 things: keys, blue mug, phone and pill bottle."* "Find the mug" afterwards is instant.
 - **Ask about what you're holding.** "Is this decaf?", "how many do I take?". Reach answers only from what's printed on the label. If the label mentions one of your allergies, it leads with *"Careful, the label says it contains peanuts."* It never tells you something is safe.
 - **Count your money.** "How much money is this?" → *"That's a twenty, two fives and a one: thirty-one dollars."* It works for bills held up or spread on the table, and it says when it can't read one rather than guessing.
 - **Check your medicine.** Say "this is my lisinopril" once. Later, "is this my lisinopril?" either confirms it with the strength printed on the label, or warns: *"Careful, this isn't your lisinopril. The label says metformin 500 mg."*
@@ -71,9 +71,8 @@ Swift, SwiftUI, ARKit, LiDAR scene depth, SceneKit, Vision (hand pose, text reco
 1. **Launch.** Reach starts quietly, with "Hold anywhere to talk" on screen.
 2. **Table scan.** Hold, say **"what's on the table?"**, let go.
    - Chirp, and a big caption shows what was said.
-   - Reach says "I see 5 things, left to right: …". Cyan boxes pop in one after another, the Gemini chip shows the time, and the minimap fills in.
-   - The wearer sweeps a hand across the table and Reach names each object as the fingertip lands on it.
-3. **Find the keys.** Say **"find my keys"**. It's instant, because the keys were scanned: "Found keys, out and to the right."
+   - Reach says "I see 5 things: …". Cyan boxes pop in one after another, the Gemini chip shows the time, and the minimap fills in.
+3. **Find the keys.** Say **"find my keys"**. It's instant, because the keys were scanned: "Found keys, farther and to your right."
    - The ticks speed up and the minimap rings pulse.
    - If the hand heads for the mug, Reach says "Careful, mug in the way."
    - Ding, "Got them.", and a big **"Reached in X.X s"**.
