@@ -15,6 +15,10 @@ Reach is an iPhone app worn on a chest mount, with earbuds.
 - **It knows when you've touched it.** Using the iPhone's LiDAR depth sensor, Reach knows how high your fingertip is, not just where it is in the picture. It only says *"Got them."* (with a ding) when your finger is actually on the object.
 - **"What's on the table?"** Reach names everything in front of you, left to right: *"I see 4 things: keys, blue mug, phone and pill bottle."* Then it becomes **touch to explore**. Run your hand over the table and Reach names each object as your fingertip lands on it, like braille for the tabletop. "Find the mug" afterwards is instant.
 - **Ask about what you're holding.** "Is this decaf?", "how many do I take?". Reach answers only from what's printed on the label. If the label mentions one of your allergies, it leads with *"Careful, the label says it contains peanuts."* It never tells you something is safe.
+- **Count your money.** "How much money is this?" → *"That's a twenty, two fives and a one: thirty-one dollars."* It works for bills held up or spread on the table, and it says when it can't read one rather than guessing.
+- **Check your medicine.** Say "this is my lisinopril" once. Later, "is this my lisinopril?" either confirms it with the strength printed on the label, or warns: *"Careful, this isn't your lisinopril. The label says metformin 500 mg."*
+- **Watch the table.** "Tell me if anything changes" → *"Someone put a cup down to your right."*
+- **Never leaves you in silence.** A chirp confirms every command instantly, and slow answers get "Still looking." Without internet, Reach tells you so and offers tap-to-guide.
 - **"What's this?"** Hold something up and ask. Reach reads it and answers in one sentence: *"It's ibuprofen, 200 mg tablets, expiring April 2027."*
 
 The phone screen (mirrored for the judges) shows what Reach sees: the object's box, your fingertip, the guidance line, and captions of everything it says.
@@ -60,18 +64,23 @@ Swift, SwiftUI, ARKit, LiDAR scene depth, SceneKit, Vision (hand pose, text reco
 
 ## Demo script (for us, not Devpost)
 
-**Before:** phone on the chest mount, earbuds in, screen mirrored to the laptop, wearer blindfolded. On the table: keys, a mug between the wearer and the keys, a snack whose label mentions peanuts, a pill bottle. In Tuning → Features, check that **Ask about held items** and **Reach timer** are on and Allergies says "peanuts". Turn on **Minimap** and **Obstacle warning** for the full show.
+**Before:** phone on the chest mount, earbuds in, screen mirrored to the laptop, wearer blindfolded. On the table: keys, a mug between the wearer and the keys, a snack whose label mentions peanuts, and a $20, two $5s and a $1. In Tuning → Features:
+- Check that **Dead-air killer**, **Network failure path**, **Judge view polish**, **Ask about held items** and **Reach timer** are on (the defaults), and that Allergies says "peanuts".
+- Turn on **Minimap**, **Obstacle warning** and **Money reader**.
 
 1. **Launch.** Reach says: "Hold to talk, then say find and an object."
-2. **Table scan.** Hold, say **"what's on the table?"**, let go. Reach says "I see 4 things, left to right: …". Cyan labeled boxes appear on every object and the minimap fills in. The wearer sweeps a hand across the table and Reach names each object as the fingertip lands on it.
+2. **Table scan.** Hold, say **"what's on the table?"**, let go.
+   - Chirp, and a big caption shows what was said.
+   - Reach says "I see 5 things, left to right: …". Cyan boxes pop in one after another, the Gemini chip shows the time, and the minimap fills in.
+   - The wearer sweeps a hand across the table and Reach names each object as the fingertip lands on it.
 3. **Find the keys.** Say **"find my keys"**. It's instant, because the keys were scanned: "Found keys, out and to the right."
-   - The wearer reaches out, and the ticks speed up while the minimap rings pulse.
+   - The ticks speed up and the minimap rings pulse.
    - If the hand heads for the mug, Reach says "Careful, mug in the way."
-   - Point at the green fingertip dot and the yellow line on screen.
    - Ding, "Got them.", and a big **"Reached in X.X s"**.
-4. **Allergy question.** The wearer holds up the snack and asks **"is this okay for me to eat?"** Reach says *"Careful, the label says it contains peanuts. …"*, and the caption shows it for the judges.
-5. **Encore (pick one):**
-   - Pill bottle: **"how many do I take?"**. Reach repeats the printed directions only.
-   - With Where did I leave… on: **"where are my keys?"**
-   - With Español on: **"encuentra mis llaves"**.
-6. **Backup if the Wi-Fi is slow:** Tuning → Models → Find: 3.5 Flash-Lite (fastest). To guide without voice, tap an object on screen.
+4. **Allergy snack.** The wearer holds up the snack and asks **"is this okay for me to eat?"** Reach says *"Careful, the label says it contains peanuts. …"*
+5. **Count money.** The wearer spreads the bills and asks **"how much money is this?"** Each bill gets a green amount box and Reach says *"That's a twenty, two fives and a one: thirty-one dollars."*
+6. **Encore (optional):**
+   - With Medication check on: "is this my ibuprofen?"
+   - With Watch mode on: "tell me if anything changes", then someone sets a cup down.
+   - With Español on: "encuentra mis llaves".
+7. **Backup:** if the Wi-Fi drops, Reach says it can't reach the internet. Tap the object on screen and it still guides. For speed, use Tuning → Models → Find: 3.5 Flash-Lite.
