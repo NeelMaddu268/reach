@@ -35,6 +35,7 @@ struct TuningSheet: View {
                     Toggle("Dead-air killer (chirp, big captions, “Still looking”)", isOn: $model.tuning.deadAirKiller)
                     Toggle("Network failure path (never silent)", isOn: $model.tuning.networkFallback)
                     Toggle("Ask about held items (Gemini)", isOn: $model.tuning.askAboutItems)
+                    Toggle("Money reader", isOn: $model.tuning.moneyReader)
                     TextField("Allergies, comma-separated", text: $model.tuning.allergies)
                         .textInputAutocapitalization(.never)
                     Toggle("Reach timer", isOn: $model.tuning.reachTimer)

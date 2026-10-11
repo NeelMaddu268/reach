@@ -18,6 +18,7 @@ final class AppModel {
     @ObservationIgnored private let voice = VoiceInput()
     private let locator = ObjectLocator()
     private let reader = Reader()
+    private let moneyReader = MoneyReader()
     private let hands = HandTracker()
     private let guide = Guide()
     @ObservationIgnored private let frameTuning = OSAllocatedUnfairLock(initialState: Tuning.load())
@@ -89,6 +90,8 @@ final class AppModel {
     var caption: String?
     /// What the user just said, shown big for a few seconds (dead-air killer).
     var heardCaption: String?
+    /// Bills from the last money read, labeled ("$20", "?") on screen for a few seconds.
+    var moneyBoxes: [LabeledBox] = []
     /// Scanned objects as seen in the current frame, for the judge view.
     var sceneBoxes: [LabeledBox] = []
     /// The scanned object the fingertip is on.
@@ -124,6 +127,13 @@ final class AppModel {
     }
 
     static let onboarding = "Hold to talk, then say find and an object."
+
+    /// Voice commands of the features that are switched on.
+    private var commandExtras: Command.Extras {
+        var extras: Command.Extras = []
+        if tuning.moneyReader { extras.insert(.money) }
+        return extras
+    }
 
     @MainActor
     private func showHeard(_ text: String) {
@@ -169,7 +179,7 @@ final class AppModel {
         isListening = false
         audio.setMuted(false)
         lastHeard = heard
-        let command = Command(heard, spanish: tuning.spanish)
+        let command = Command(heard, spanish: tuning.spanish, extras: commandExtras)
         if tuning.deadAirKiller {
             if command != nil { audio.working() }
             if !heard.isEmpty { showHeard(heard) }
@@ -181,6 +191,7 @@ final class AppModel {
         case .ask(let question):
             if tuning.askAboutItems { await ask(question) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }
         case .scan: await scan()
+        case .money: await countMoney()
         case .remember(let item):
             if tuning.myObjects { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
@@ -242,6 +253,35 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Ask: \(error.localizedDescription)")
+            geminiFailed(t("I couldn't read that.", "No pude leer eso."))
+        }
+    }
+
+    // MARK: Money
+
+    /// "How much money is this?": reads each bill (held up or on the table), labels it on screen, and says the
+    /// total of the ones it can clearly read. Unreadable bills are said, never guessed.
+    @MainActor
+    func countMoney() async {
+        guard !reading else { return }
+        reading = true
+        defer { reading = false }
+        audio.say(t("Let me see.", "Déjame ver."))
+        guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
+        let start = CACurrentMediaTime()
+        do {
+            let bills = try await stillLooking { try await moneyReader.read(snapshot.jpeg, model: tuning.geminiModel) }
+            readMs = (CACurrentMediaTime() - start) * 1000
+            let boxes = bills.map { LabeledBox(label: $0.value.map { "$\($0)" } ?? "?", box: $0.box) }
+            moneyBoxes = boxes
+            Task {
+                try? await Task.sleep(for: .seconds(10))
+                if moneyBoxes.map(\.box) == boxes.map(\.box) { moneyBoxes = [] }
+            }
+            audio.say(MoneyReader.spoken(bills, spanish: tuning.spanish))
+        } catch {
+            readMs = (CACurrentMediaTime() - start) * 1000
+            print("Money: \(error.localizedDescription)")
             geminiFailed(t("I couldn't read that.", "No pude leer eso."))
         }
     }

@@ -53,6 +53,8 @@ struct Tuning: Equatable, Codable {
     /// Never go silent on a network problem: Gemini failures say "I can't reach the internet. Tap the object on screen…",
     /// a missing camera frame is said out loud, and a slow or failing live voice hands over to the iPhone voice at once.
     var networkFallback = true
+    /// "How much money is this?": counts the bills it can clearly read, labels each one on screen.
+    var moneyReader = false
 }
 
 extension Tuning {

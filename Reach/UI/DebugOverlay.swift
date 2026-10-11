@@ -9,8 +9,16 @@ struct DebugOverlay: View {
         // Read here (not inside Canvas) so Observation redraws on change.
         let tip = model.fingertip, box = model.targetBox, zone = model.lockZone, state = model.state
         let label = model.targetLabel
-        let scene = model.sceneBoxes, touched = model.touchedLabel
+        let scene = model.sceneBoxes, touched = model.touchedLabel, money = model.moneyBoxes
         Canvas { context, _ in
+            // Bills from the money reader: green with the amount, orange "?" where it couldn't read one.
+            for bill in money {
+                let rect = imageRect.rect(atNormalized: bill.box)
+                let color: Color = bill.label == "?" ? .orange : .green
+                context.stroke(Path(roundedRect: rect, cornerRadius: 6), with: .color(color), lineWidth: 4)
+                context.draw(Text(bill.label).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(color),
+                             at: CGPoint(x: rect.midX, y: rect.midY))
+            }
             // Everything the table scan found; the one under the fingertip is filled.
             for object in scene {
                 let rect = imageRect.rect(atNormalized: object.box)
