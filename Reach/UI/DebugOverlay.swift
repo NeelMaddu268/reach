@@ -79,7 +79,7 @@ struct StatusHUD: View {
         if let note = model.trackingNote { lines.append("AR: \(note)") }
         if !model.lastHeard.isEmpty || model.locateMs != nil || model.readMs != nil {
             let gemini = model.locateMs.map { String(format: "  gemini %.1f s", $0 / 1000) } ?? ""
-            let claude = model.readMs.map { String(format: "  claude %.1f s", $0 / 1000) } ?? ""
+            let claude = model.readMs.map { String(format: "  read %.1f s", $0 / 1000) } ?? ""
             lines.append("heard “\(model.lastHeard)”\(gemini)\(claude)")
         }
         if let caption = model.caption { lines.append("🔊 \(caption)") }

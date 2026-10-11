@@ -4,6 +4,8 @@ import Speech
 enum Command: Equatable {
     case find(String)
     case whatsThis
+    /// Any other question, about the held item: "is this decaf?", "how many do I take?"
+    case ask(String)
     case scan
     case stop
 
@@ -38,6 +40,12 @@ enum Command: Equatable {
             if words.last == "please" { words.removeLast() }
             guard !words.isEmpty else { return nil }
             self = .find(words.joined(separator: " "))
+            return
+        }
+        let questionStarts = ["is ", "does ", "do ", "how ", "what ", "which ", "can ", "should ", "when ", "are ",
+                              "will ", "has ", "have ", "who "]
+        if questionStarts.contains(where: text.hasPrefix) {
+            self = .ask(transcript.trimmingCharacters(in: .whitespaces))
             return
         }
         return nil
