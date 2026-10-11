@@ -106,6 +106,8 @@ final class AppModel {
     var targetShownAt = Date.distantPast
     /// How long the last Gemini call took, for the judge view's chip.
     var geminiMs: Double?
+    /// The last Gemini error, shown on the camera card for a few seconds.
+    var lastError: String?
     /// Scanned objects as seen in the current frame, for the judge view.
     var sceneBoxes: [LabeledBox] = []
     /// The scanned object the fingertip is on.
@@ -292,7 +294,7 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Ask: \(error.localizedDescription)")
-            geminiFailed(t("I couldn't read that.", "No pude leer eso."))
+            geminiFailed(t("I couldn't read that.", "No pude leer eso."), error)
         }
     }
 
@@ -323,7 +325,7 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Money: \(error.localizedDescription)")
-            geminiFailed(t("I couldn't read that.", "No pude leer eso."))
+            geminiFailed(t("I couldn't read that.", "No pude leer eso."), error)
         }
     }
 
@@ -353,7 +355,7 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Check: \(error.localizedDescription)")
-            geminiFailed(t("I couldn't read that.", "No pude leer eso."))
+            geminiFailed(t("I couldn't read that.", "No pude leer eso."), error)
         }
     }
 
@@ -402,7 +404,7 @@ final class AppModel {
             print("Watch: \(error.localizedDescription)")
             if watchFailures >= 3 {
                 stopWatching(saying: false)
-                geminiFailed(t("I couldn't reach Gemini, so I stopped watching.", "No pude conectar con Gemini, así que dejé de vigilar."))
+                geminiFailed(t("I couldn't reach Gemini, so I stopped watching.", "No pude conectar con Gemini, así que dejé de vigilar."), error)
             }
             return
         }
@@ -514,7 +516,7 @@ final class AppModel {
         } catch {
             locateMs = (CACurrentMediaTime() - start) * 1000
             print("Scan: \(error.localizedDescription)")
-            geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
+            geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."), error)
             return
         }
         let objects = found.sorted { $0.box.midX < $1.box.midX }
@@ -598,7 +600,7 @@ final class AppModel {
             audio.say(t("Got it. I'll remember your \(item).", "Listo. Recordaré tu \(item)."))
         } catch {
             print("Remember: \(error.localizedDescription)")
-            geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
+            geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."), error)
         }
     }
 
@@ -675,7 +677,7 @@ final class AppModel {
         } catch {
             print("Locate: \(error.localizedDescription)")
             if targetLabel == query { stop() }
-            if error is CameraNotReady { cameraNotReady() } else { geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini.")) }
+            if error is CameraNotReady { cameraNotReady() } else { geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."), error) }
             return
         }
         guard targetLabel == query else { return }  // stopped or replaced while we waited
@@ -791,11 +793,34 @@ final class AppModel {
 
     static let offline = "I can't reach the internet. Tap the object on screen and I'll guide you."
 
-    /// A Gemini call failed: with the network-failure path, the offline line and a way forward; otherwise `old`.
+    /// A Gemini call failed. With the network-failure path: say what actually went wrong (offline, too slow, or
+    /// Gemini itself) plus a way forward, and show the error on screen. Otherwise `old`, as before.
     @MainActor
-    private func geminiFailed(_ old: String) {
-        audio.say(tuning.networkFallback
-                  ? t(Self.offline, "No puedo conectarme a internet. Toca el objeto en la pantalla y te guío.") : old)
+    private func geminiFailed(_ old: String, _ error: Error) {
+        guard tuning.networkFallback else { return audio.say(old) }
+        showError(error.localizedDescription)
+        let code = (error as? URLError)?.code
+        let offline: [URLError.Code] = [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost,
+                                        .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff]
+        if let code, offline.contains(code) {
+            audio.say(t(Self.offline, "No puedo conectarme a internet. Toca el objeto en la pantalla y te guío."))
+        } else if code == .timedOut {
+            audio.say(t("Gemini is taking too long. Tap the object on screen and I'll guide you.",
+                        "Gemini está tardando demasiado. Toca el objeto en la pantalla y te guío."))
+        } else {
+            audio.say(t("Gemini had a problem. Tap the object on screen and I'll guide you.",
+                        "Gemini tuvo un problema. Toca el objeto en la pantalla y te guío."))
+        }
+    }
+
+    /// The last error, on screen for a few seconds (so a failure is never a mystery).
+    @MainActor
+    private func showError(_ text: String) {
+        lastError = text
+        Task {
+            try? await Task.sleep(for: .seconds(8))
+            if lastError == text { lastError = nil }
+        }
     }
 
     /// No photo to work with: say so (network-failure path) rather than going quiet.

@@ -19,6 +19,8 @@ FIXED = [
     "Hold to talk, then say find and an object.", "Looking at the table.", "I don't see anything on the table.",
     "Still looking.", "I can't reach the internet. Tap the object on screen and I'll guide you.",
     "The camera isn't ready. Try again.", "Watching the table. I'll tell you if anything changes.", "Stopped watching.",
+    "Gemini is taking too long. Tap the object on screen and I'll guide you.",
+    "Gemini had a problem. Tap the object on screen and I'll guide you.",
 ]
 
 
