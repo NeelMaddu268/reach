@@ -57,6 +57,8 @@ struct Tuning: Equatable, Codable {
     var moneyReader = false
     /// "This is my <medicine>" also saves its label text; "is this my <medicine>?" checks a bottle against it.
     var medicationCheck = false
+    /// "Tell me if anything changes": re-scans every ~3 s and says what appeared, moved or went.
+    var watchMode = false
 }
 
 extension Tuning {
