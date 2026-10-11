@@ -540,8 +540,8 @@ final class AppModel {
 
     // MARK: What's on the table?
 
-    /// Gemini lists every object on the table; each is pinned in 3D and named. Afterwards,
-    /// touching an object names it, and "find" goes straight to a scanned object without asking Gemini again.
+    /// Gemini lists every object on the table; each is pinned in 3D and named. Afterwards, "find" goes straight
+    /// to a scanned object without asking Gemini again (and, with touch to explore on, touching an object names it).
     @MainActor
     func scan() async {
         guard !scanning else { return }
@@ -573,7 +573,8 @@ final class AppModel {
         boxesShownAt = Date()
         audio.say(Self.summary(objects.map(\.label), spanish: tuning.spanish))
         // So touch-to-explore names and obstacle warnings play instantly.
-        audio.prefetch(objects.map { Self.touchName($0.label) } + objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) })
+        let touchNames = tuning.touchToExplore ? objects.map { Self.touchName($0.label) } : []
+        audio.prefetch(touchNames + objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) })
     }
 
     /// "I see 4 things: keys, blue mug, phone and pill bottle."
@@ -933,7 +934,7 @@ final class AppModel {
 
         // Touch-to-explore, when not guiding somewhere.
         var touchedName: String?
-        if !scene.isEmpty, guide.state == .idle || guide.state == .locked, let finger {
+        if tuning.touchToExplore, !scene.isEmpty, guide.state == .idle || guide.state == .locked, let finger {
             touchedName = touchedObject(finger, geometry: geometry, time: time)
         } else {
             touching = nil
