@@ -25,7 +25,7 @@ struct Reader {
     static let models = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
     var timeout: TimeInterval = 15
 
-    func describe(_ jpeg: Data, model: String) async throws -> String {
+    func describe(_ jpeg: Data, model: String, spanish: Bool = false) async throws -> String {
         guard !AppConfig.anthropicAPIKey.isEmpty else { throw ReaderError.missingKey }
         let text = await Self.recognizeText(in: jpeg)
 
@@ -43,7 +43,7 @@ struct Reader {
             "output_config": ["effort": "low"],  // a quick answer; thinking can't be turned off on these models
             "messages": [["role": "user", "content": [
                 ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": jpeg.base64EncodedString()]],
-                ["type": "text", "text": Self.prompt(text)],
+                ["type": "text", "text": Self.prompt(text) + (spanish ? "\nAnswer in Spanish." : "")],
             ]]],
         ]
         // If the model declines for safety reasons, the API retries on Anthropic's recommended fallback model.
@@ -75,8 +75,8 @@ struct Reader {
 
     /// A question about the held item (nil = "what's this?"), answered by Gemini only from what's printed or clearly
     /// visible. Leads with an allergy warning when the printed text mentions one of `allergies`; never reassures.
-    func ask(_ question: String?, jpeg: Data, previous: Item?, allergies: [String], model: String) async throws
-        -> (spoken: String, item: Item) {
+    func ask(_ question: String?, jpeg: Data, previous: Item?, allergies: [String], model: String, spanish: Bool = false)
+        async throws -> (spoken: String, item: Item) {
         let text = await Self.recognizeText(in: jpeg)
         let question = question ?? "What is this? Name it and the most useful details printed on it, like flavor, strength or dose, or expiry date."
         var images = [jpeg]
@@ -100,7 +100,7 @@ struct Reader {
         - If you can't read enough of it to answer, set readable to false and say what you can't read.
         - Set allergens_on_label to whichever of these the printed text mentions (ingredients, "contains" or \
         "may contain" lines): \(allergies.isEmpty ? "none" : allergies.joined(separator: ", ")). Empty if none.
-        Text read from the current photo (may have errors): \(Self.joined(text))
+        Text read from the current photo (may have errors): \(Self.joined(text))\(spanish ? "\nWrite answer in Spanish." : "")
         """
         let schema: [String: Any] = [
             "type": "OBJECT",
@@ -121,12 +121,15 @@ struct Reader {
         }
         var spoken = Self.withoutReassurance(reply.answer)
         if spoken.isEmpty {
-            spoken = reply.readable ? "I can only tell you what's printed on the label."
-                                    : "I can't read the label clearly. Try holding it closer, label toward the camera."
+            spoken = reply.readable
+                ? (spanish ? "Solo puedo decirte lo que está impreso en la etiqueta." : "I can only tell you what's printed on the label.")
+                : (spanish ? "No puedo leer bien la etiqueta. Acércala, con la etiqueta hacia la cámara."
+                           : "I can't read the label clearly. Try holding it closer, label toward the camera.")
         }
         if !flagged.isEmpty {
-            let names = flagged.count == 1 ? flagged[0] : flagged.dropLast().joined(separator: ", ") + " and " + flagged.last!
-            spoken = "Careful, the label says it contains \(names). " + spoken
+            let and = spanish ? " y " : " and "
+            let names = flagged.count == 1 ? flagged[0] : flagged.dropLast().joined(separator: ", ") + and + flagged.last!
+            spoken = (spanish ? "Cuidado, la etiqueta dice que contiene \(names). " : "Careful, the label says it contains \(names). ") + spoken
         }
         return (spoken, Item(jpeg: jpeg, text: text, question: question, answer: reply.answer, time: CACurrentMediaTime()))
     }
@@ -140,7 +143,8 @@ struct Reader {
     /// Drops any sentence that reassures ("safe", "allergen-free", "doesn't contain …"): Reach only reports what's printed.
     private static func withoutReassurance(_ answer: String) -> String {
         let reassurance = try! NSRegularExpression(pattern:
-            #"\bsafe\b|allergen[- ]free|\bfree (of|from)\b|\b(does ?n['’]?t|does not|do not|don['’]t) contain|\bcontains? no\b|\bno traces?\b"#,
+            #"\bsafe\b|allergen[- ]free|\bfree (of|from)\b|\b(does ?n['’]?t|does not|do not|don['’]t) contain|\bcontains? no\b|\bno traces?\b"#
+            + #"|\bsegur[oa]s?\b|sin al[eé]rgenos|libre de|\bno contiene\b"#,
             options: .caseInsensitive)
         var sentences: [String] = []
         answer.enumerateSubstrings(in: answer.startIndex..., options: .bySentences) { sentence, _, _, _ in

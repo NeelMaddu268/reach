@@ -13,8 +13,8 @@ struct ObjectLocator {
 
     /// Returns nil when Gemini doesn't see the object. With a `reference` photo of the user's own one
     /// ("this is my mug"), Gemini looks for that same object rather than any match.
-    func locate(_ query: String, in jpeg: Data, model: String, reference: Data? = nil) async throws -> Found? {
-        var prompt = Self.prompt(query)
+    func locate(_ query: String, in jpeg: Data, model: String, reference: Data? = nil, spanish: Bool = false) async throws -> Found? {
+        var prompt = Self.prompt(query) + (spanish ? "\nWrite label in Spanish." : "")
         if reference != nil {
             prompt = "The first photo shows the person's own \(query). Find that same one, not a similar one, in the second photo.\n"
                 + prompt
@@ -27,8 +27,8 @@ struct ObjectLocator {
     }
 
     /// Every distinct object on the table (up to 12).
-    func scan(_ jpeg: Data, model: String) async throws -> [Found] {
-        let text = try await Gemini.generate(prompt: Self.scanPrompt, images: [jpeg], schema: Self.scanSchema, model: model,
+    func scan(_ jpeg: Data, model: String, spanish: Bool = false) async throws -> [Found] {
+        let text = try await Gemini.generate(prompt: Self.scanPrompt + (spanish ? "\nWrite labels in Spanish." : ""), images: [jpeg], schema: Self.scanSchema, model: model,
                                              timeout: timeout)
         guard let scan = try? JSONDecoder().decode(Scan.self, from: Data(text.utf8)) else { throw Gemini.GeminiError.badReply }
         return scan.objects.compactMap { Self.found($0.label, $0.box_2d) }

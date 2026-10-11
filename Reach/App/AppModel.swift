@@ -60,6 +60,8 @@ final class AppModel {
             let tuning = tuning
             frameTuning.withLock { $0 = tuning }
             tuning.save()
+            if voice.spanish != tuning.spanish { voice.spanish = tuning.spanish }
+            audio.spanish = tuning.spanish
         }
     }
 
@@ -111,11 +113,18 @@ final class AppModel {
         } catch {
             cameraError = error.localizedDescription
         }
+        voice.spanish = tuning.spanish
+        audio.spanish = tuning.spanish
         _ = await voice.requestPermissions()  // ask now, not mid-demo
-        audio.say(Self.onboarding)
+        audio.say(t(Self.onboarding, "Mantén presionado para hablar, y di encuentra y un objeto."))
     }
 
     static let onboarding = "Hold to talk, then say find and an object."
+
+    /// The English or Spanish line, per the Spanish switch. Main only.
+    private func t(_ english: String, _ spanish: String) -> String {
+        tuning.spanish ? spanish : english
+    }
 
     // MARK: Voice
 
@@ -134,25 +143,26 @@ final class AppModel {
         isListening = false
         audio.setMuted(false)
         lastHeard = heard
-        switch Command(heard) {
+        switch Command(heard, spanish: tuning.spanish) {
         case .find(let query): await find(query)
         case .whatsThis:
             if tuning.askAboutItems { await ask(nil) } else { await read() }
         case .ask(let question):
-            if tuning.askAboutItems { await ask(question) } else { audio.say("Say find, then an object.") }
+            if tuning.askAboutItems { await ask(question) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }
         case .scan: await scan()
         case .remember(let item):
-            if tuning.myObjects { await remember(item) } else { audio.say("Say find, then an object.") }  // off: as before
+            if tuning.myObjects { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
                 await whereIs(item)
             } else if heard.lowercased().contains("where did") {
-                audio.say("Say find, then an object.")  // as before this feature
+                audio.say(t("Say find, then an object.", "Di encuentra y un objeto."))  // as before this feature
             } else {
                 await find(item)
             }
         case .stop: stop()
-        case nil: audio.say(heard.isEmpty ? "I didn't hear anything." : "Say find, then an object.")
+        case nil:
+            audio.say(heard.isEmpty ? t("I didn't hear anything.", "No escuché nada.") : t("Say find, then an object.", "Di encuentra y un objeto."))
         }
     }
 
@@ -164,17 +174,17 @@ final class AppModel {
         guard !reading else { return }
         reading = true
         defer { reading = false }
-        audio.say("Let me see.")
+        audio.say(t("Let me see.", "Déjame ver."))
         guard cameraError == nil, let snapshot = await snapshot() else { return }
         let start = CACurrentMediaTime()
         do {
-            let answer = try await reader.describe(snapshot.jpeg, model: tuning.claudeModel)
+            let answer = try await reader.describe(snapshot.jpeg, model: tuning.claudeModel, spanish: tuning.spanish)
             readMs = (CACurrentMediaTime() - start) * 1000
             audio.say(answer)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Read: \(error.localizedDescription)")
-            audio.say("I couldn't read that.")
+            audio.say(t("I couldn't read that.", "No pude leer eso."))
         }
     }
 
@@ -185,21 +195,21 @@ final class AppModel {
         guard !reading else { return }
         reading = true
         defer { reading = false }
-        audio.say("Let me see.")
+        audio.say(t("Let me see.", "Déjame ver."))
         guard cameraError == nil, let snapshot = await snapshot() else { return }
         let previous = question == nil ? nil : lastItem.flatMap { CACurrentMediaTime() - $0.time < 120 ? $0 : nil }
         lastItem = nil
         let start = CACurrentMediaTime()
         do {
             let result = try await reader.ask(question, jpeg: snapshot.jpeg, previous: previous,
-                                              allergies: tuning.allergyList, model: tuning.geminiModel)
+                                              allergies: tuning.allergyList, model: tuning.geminiModel, spanish: tuning.spanish)
             readMs = (CACurrentMediaTime() - start) * 1000
             if previous == nil { lastItem = result.item }
             audio.say(result.spoken)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Ask: \(error.localizedDescription)")
-            audio.say("I couldn't read that.")
+            audio.say(t("I couldn't read that.", "No pude leer eso."))
         }
     }
 
@@ -212,17 +222,17 @@ final class AppModel {
         guard !scanning else { return }
         scanning = true
         defer { scanning = false }
-        audio.say("Looking at the table.")
+        audio.say(t("Looking at the table.", "Mirando la mesa."))
         guard cameraError == nil, let snapshot = await snapshot() else { return }
         let start = CACurrentMediaTime()
         let found: [ObjectLocator.Found]
         do {
-            found = try await locator.scan(snapshot.jpeg, model: tuning.geminiModel)
+            found = try await locator.scan(snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish)
             locateMs = (CACurrentMediaTime() - start) * 1000
         } catch {
             locateMs = (CACurrentMediaTime() - start) * 1000
             print("Scan: \(error.localizedDescription)")
-            audio.say("I couldn't reach Gemini.")
+            audio.say(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
             return
         }
         let objects = found.sorted { $0.box.midX < $1.box.midX }
@@ -233,17 +243,20 @@ final class AppModel {
             self.scene.forEach { self.recordSighting($0.label, $0.anchor) }
             self.touching = nil
         }
-        audio.say(Self.summary(objects.map(\.label)))
+        audio.say(Self.summary(objects.map(\.label), spanish: tuning.spanish))
         // So touch-to-explore names and obstacle warnings play instantly.
-        audio.prefetch(objects.map { Self.touchName($0.label) } + objects.map { Self.obstaclePhrase($0.label) })
+        audio.prefetch(objects.map { Self.touchName($0.label) } + objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) })
     }
 
     /// "I see 4 things, left to right: keys, blue mug, phone and pill bottle."
-    private static func summary(_ labels: [String]) -> String {
+    private static func summary(_ labels: [String], spanish: Bool) -> String {
         switch labels.count {
-        case 0: return "I don't see anything on the table."
-        case 1: return "I see \(labels[0])."
-        default: return "I see \(labels.count) things, left to right: \(labels.dropLast().joined(separator: ", ")) and \(labels.last!)."
+        case 0: return spanish ? "No veo nada en la mesa." : "I don't see anything on the table."
+        case 1: return spanish ? "Veo \(labels[0])." : "I see \(labels[0])."
+        default:
+            let list = labels.dropLast().joined(separator: ", ")
+            return spanish ? "Veo \(labels.count) cosas, de izquierda a derecha: \(list) y \(labels.last!)."
+                           : "I see \(labels.count) things, left to right: \(list) and \(labels.last!)."
         }
     }
 
@@ -283,19 +296,20 @@ final class AppModel {
     /// Finds `item` in the frame (the one being held up, nearest the person) and saves it as the reference photo.
     @MainActor
     func remember(_ item: String) async {
-        audio.say("Let me see.")
+        audio.say(t("Let me see.", "Déjame ver."))
         guard cameraError == nil, let snapshot = await snapshot() else { return }
         do {
-            guard let found = try await locator.locate(item, in: snapshot.jpeg, model: tuning.geminiModel),
+            guard let found = try await locator.locate(item, in: snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish),
                   let crop = FrameEncoder.crop(snapshot.jpeg, to: found.box) else {
-                audio.say("I couldn't see your \(item). Hold it up in front of the camera and try again.")
+                audio.say(t("I couldn't see your \(item). Hold it up in front of the camera and try again.",
+                            "No pude ver tu \(item). Sostenlo frente a la cámara e intenta de nuevo."))
                 return
             }
             try MyObjects.save(crop, as: item)
-            audio.say("Got it. I'll remember your \(item).")
+            audio.say(t("Got it. I'll remember your \(item).", "Listo. Recordaré tu \(item)."))
         } catch {
             print("Remember: \(error.localizedDescription)")
-            audio.say("I couldn't reach Gemini.")
+            audio.say(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
         }
     }
 
@@ -304,14 +318,19 @@ final class AppModel {
     /// "Your keys were to your left, 3 minutes ago. Say find keys and I'll take you there."
     @MainActor
     func whereIs(_ item: String) async {
+        let spanish = tuning.spanish
         let answer: String = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
                 guard let seen = self.sightings.values.filter({ Self.matches($0.label, item) }).max(by: { $0.time < $1.time }) else {
-                    return continuation.resume(returning: "I haven't seen \(item) yet. Say find \(item) and I'll look.")
+                    return continuation.resume(returning: spanish ? "Todavía no he visto \(item). Di encuentra \(item) y lo busco."
+                                                                  : "I haven't seen \(item) yet. Say find \(item) and I'll look.")
                 }
-                let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0) } ?? "nearby"
-                let ago = Self.timeAgo(CACurrentMediaTime() - seen.time)
-                continuation.resume(returning: "Your \(seen.label) \(seen.label.hasSuffix("s") ? "were" : "was") \(side), \(ago). Say find \(item) and I'll take you there.")
+                let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0, spanish: spanish) } ?? (spanish ? "cerca" : "nearby")
+                let ago = Self.timeAgo(CACurrentMediaTime() - seen.time, spanish: spanish)
+                let plural = seen.label.hasSuffix("s")
+                continuation.resume(returning: spanish
+                    ? "\(plural ? "Tus" : "Tu") \(seen.label) \(plural ? "estaban" : "estaba") \(side), \(ago). Di encuentra \(item) y te llevo."
+                    : "Your \(seen.label) \(plural ? "were" : "was") \(side), \(ago). Say find \(item) and I'll take you there.")
             }
         }
         audio.say(answer)
@@ -323,24 +342,24 @@ final class AppModel {
     }
 
     /// Which way a pinned object is from where the camera points now.
-    private static func side(of pinned: ObjectAnchor, from camera: ARCamera) -> String {
-        guard let box = pinned.box(in: camera) else { return "behind you" }
+    private static func side(of pinned: ObjectAnchor, from camera: ARCamera, spanish: Bool) -> String {
+        guard let box = pinned.box(in: camera) else { return spanish ? "detrás de ti" : "behind you" }
         switch box.midX {
-        case ..<0: return "off to your left"
-        case ..<0.4: return "to your left"
-        case ...0.6: return "in front of you"
-        case ...1: return "to your right"
-        default: return "off to your right"
+        case ..<0: return spanish ? "más a tu izquierda" : "off to your left"
+        case ..<0.4: return spanish ? "a tu izquierda" : "to your left"
+        case ...0.6: return spanish ? "frente a ti" : "in front of you"
+        case ...1: return spanish ? "a tu derecha" : "to your right"
+        default: return spanish ? "más a tu derecha" : "off to your right"
         }
     }
 
-    private static func timeAgo(_ seconds: TimeInterval) -> String {
+    private static func timeAgo(_ seconds: TimeInterval, spanish: Bool) -> String {
         switch seconds {
-        case ..<20: return "just now"
-        case ..<60: return "\(Int(seconds / 10) * 10) seconds ago"
-        case ..<120: return "a minute ago"
-        case ..<3600: return "\(Int(seconds / 60)) minutes ago"
-        default: return "over an hour ago"
+        case ..<20: return spanish ? "hace un momento" : "just now"
+        case ..<60: return spanish ? "hace \(Int(seconds / 10) * 10) segundos" : "\(Int(seconds / 10) * 10) seconds ago"
+        case ..<120: return spanish ? "hace un minuto" : "a minute ago"
+        case ..<3600: return spanish ? "hace \(Int(seconds / 60)) minutos" : "\(Int(seconds / 60)) minutes ago"
+        default: return spanish ? "hace más de una hora" : "over an hour ago"
         }
     }
 
@@ -355,7 +374,7 @@ final class AppModel {
             camera.frameQueue.async { self.startGuiding(to: scanned.anchor, pendingBox: nil, announcing: scanned.label) }
             return
         }
-        audio.say("Looking for \(query).")
+        audio.say(t("Looking for \(query).", "Buscando \(query)."))
         camera.frameQueue.async {
             self.clearTarget()
             self.guide.beginLocating()
@@ -366,13 +385,13 @@ final class AppModel {
         } catch {
             print("Locate: \(error.localizedDescription)")
             if targetLabel == query { stop() }
-            audio.say("I couldn't reach Gemini.")
+            audio.say(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
             return
         }
         guard targetLabel == query else { return }  // stopped or replaced while we waited
         guard let result else {
             stop()
-            audio.say("I don't see \(query).")
+            audio.say(t("I don't see \(query).", "No veo \(query)."))
             return
         }
         targetLabel = result.found.label
@@ -443,7 +462,8 @@ final class AppModel {
         let start = CACurrentMediaTime()
         defer { locateMs = (CACurrentMediaTime() - start) * 1000 }
         let reference = tuning.myObjects ? MyObjects.reference(for: query) : nil
-        guard let found = try await locator.locate(query, in: snapshot.jpeg, model: tuning.geminiModel, reference: reference) else {
+        guard let found = try await locator.locate(query, in: snapshot.jpeg, model: tuning.geminiModel, reference: reference,
+                                                   spanish: tuning.spanish) else {
             return nil
         }
         return (found, snapshot.camera)
@@ -508,10 +528,10 @@ final class AppModel {
         var announcement: String?
         if let label = pendingAnnouncement {
             if let input {
-                announcement = Guide.announcement(label, input)
+                announcement = Guide.announcement(label, input, spanish: tuning.spanish)
                 pendingAnnouncement = nil
             } else if time - pendingAnnouncementSince > 1.5 {  // ARKit hasn't pinned it yet: don't stay silent
-                announcement = "Found \(label)."
+                announcement = tuning.spanish ? "Encontré \(label)." : "Found \(label)."
                 pendingAnnouncement = nil
             }
         }
@@ -532,7 +552,7 @@ final class AppModel {
            let hand = fingerPoint ?? geometry.point(at: finger.tip, onPlaneAt: anchor.tableY),
            let axes = geometry.axes(onPlaneAt: anchor.tableY),
            let label = obstacle(from: hand, to: anchor, axes: axes) {
-            obstacleWarning = Self.obstaclePhrase(label)
+            obstacleWarning = Self.obstaclePhrase(label, spanish: tuning.spanish)
             obstacleWarned = true
         }
         let minimap = tuning.minimap ? makeMinimap(geometry: geometry, finger: finger, fingerPoint: fingerPoint, tone: output.tone) : nil
@@ -562,7 +582,7 @@ final class AppModel {
             }
             switch output.event {
             case .locked:
-                self.audio.say(Self.gotIt(self.targetLabel))
+                self.audio.say(Self.gotIt(self.targetLabel, spanish: self.tuning.spanish))
                 if let reachTime { self.recordReach(reachTime) }
             case .found: Task { await self.relocate() }
             case .lost, nil: break
@@ -594,8 +614,8 @@ final class AppModel {
         return first?.label
     }
 
-    private static func obstaclePhrase(_ label: String) -> String {
-        "Careful, \(label) in the way."
+    private static func obstaclePhrase(_ label: String, spanish: Bool) -> String {
+        spanish ? "Cuidado, \(label) en el camino." : "Careful, \(label) in the way."
     }
 
     /// Pinned objects and the hand, top-down in meters from the user's body. Frame queue only.
@@ -696,7 +716,8 @@ final class AppModel {
     }
 
     /// "Got them." for keys and glasses, "Got it." otherwise.
-    private static func gotIt(_ label: String?) -> String {
+    private static func gotIt(_ label: String?, spanish: Bool) -> String {
+        if spanish { return "Listo." }
         guard let label, label.hasSuffix("s"), !label.hasSuffix("ss") else { return "Got it." }
         return "Got them."
     }

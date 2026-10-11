@@ -5,13 +5,15 @@ enum ElevenLabs {
     static let voiceID = "EXAVITQu4vr4xnSDxMaL"
     static let model = "eleven_v4_turbo"
 
-    static func speech(_ text: String) async throws -> Data {
+    static func speech(_ text: String, spanish: Bool = false) async throws -> Data {
         var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=mp3_44100_128")!,
                                  timeoutInterval: 6)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(AppConfig.elevenLabsAPIKey, forHTTPHeaderField: "xi-api-key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "model_id": model])
+        var body: [String: Any] = ["text": text, "model_id": model]
+        if spanish { body["language_code"] = "es" }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         return data
