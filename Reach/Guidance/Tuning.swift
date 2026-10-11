@@ -64,6 +64,8 @@ struct Tuning: Equatable, Codable {
     var judgePolish = true
     /// "Hey Siri, Reach find" / "what's on the table in Reach" start a find or scan. Off = Siri just opens the app.
     var siriShortcuts = true
+    /// Debug numbers (fps, latency, hand) under the top bar, and the lock zone on the camera view.
+    var showStats = false
 }
 
 extension Tuning {
