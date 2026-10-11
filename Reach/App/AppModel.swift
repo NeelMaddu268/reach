@@ -721,6 +721,7 @@ final class AppModel {
         stopWatching(saying: false)  // any find ends watch mode
         followTask?.cancel()
         targetLabel = query
+        if tuning.spanish && tuning.carefulGuidance { audio.prefetch(["Baja.", "Listo."]) }  // no bundled Spanish clips
         if let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
             targetLabel = scanned.label
             camera.frameQueue.async { self.startGuiding(to: scanned.anchor, pendingBox: nil, announcing: scanned.label) }
@@ -728,7 +729,6 @@ final class AppModel {
             return
         }
         audio.say(t("Looking for \(query).", "Buscando \(query)."))
-        if tuning.spanish && tuning.carefulGuidance { audio.prefetch(["Baja.", "Listo."]) }  // no bundled Spanish clips
         camera.frameQueue.async {
             self.clearTarget()
             self.guide.beginLocating()
