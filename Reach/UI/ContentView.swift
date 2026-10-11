@@ -14,6 +14,10 @@ struct ContentView: View {
                         .position(x: imageRect.midX, y: imageRect.midY)
                         .accessibilityHidden(true)
                     DebugOverlay(model: model, imageRect: imageRect)
+                    if model.tuning.minimap, let map = model.minimap {
+                        MinimapView(map: map)
+                            .position(x: imageRect.maxX - 85, y: imageRect.minY + 85)
+                    }
                     TouchSurface(imageRect: imageRect,
                                  onPick: model.seed,
                                  onHoldStart: model.beginListening,

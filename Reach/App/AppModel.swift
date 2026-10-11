@@ -85,6 +85,7 @@ final class AppModel {
     var reachTimes: [Double] = []
     /// "Reached in 4.8 s", shown big for a few seconds after a lock.
     var reachBanner: String?
+    var minimap: Minimap?
 
     struct LabeledBox {
         var label: String
@@ -424,6 +425,7 @@ final class AppModel {
         let touchedLabel = touching.map { scene[$0].label }
 
         let reachTime = output.event == .locked ? time - guidingSince : nil
+        let minimap = tuning.minimap ? makeMinimap(geometry: geometry, finger: finger, fingerPoint: fingerPoint, tone: output.tone) : nil
 
         let state = guide.state
         let zone = box.map { $0.insetBy(dx: -$0.width * tuning.lockMargin, dy: -$0.height * tuning.lockMargin) }
@@ -436,6 +438,7 @@ final class AppModel {
             self.lockZone = state == .guiding || state == .lost ? zone : nil
             self.trackingNote = trackingNote
             self.sceneBoxes = sceneBoxes
+            self.minimap = minimap
             self.touchedLabel = touchedLabel
             if let touchedName, !self.isListening {
                 self.audio.say(touchedName)
@@ -457,6 +460,23 @@ final class AppModel {
                 self.fps = self.fps == 0 ? 1 / frameInterval : self.fps * 0.9 + 0.1 / frameInterval
             }
         }
+    }
+
+    /// Pinned objects and the hand, top-down in meters from the user's body. Frame queue only.
+    private func makeMinimap(geometry: FrameGeometry, finger: HandTracker.Finger?, fingerPoint: simd_float3?,
+                         tone: AudioGuide.Tone) -> Minimap? {
+        guard let tableY = anchor?.tableY ?? scene.first?.anchor.tableY,
+              let axes = geometry.axes(onPlaneAt: tableY),
+              let body = geometry.point(at: CGPoint(x: 0.5, y: 1), onPlaneAt: tableY) else { return nil }
+        func place(_ p: simd_float3) -> CGPoint {
+            CGPoint(x: CGFloat(simd_dot(p - body, axes.right)), y: CGFloat(simd_dot(p - body, axes.forward)))
+        }
+        var marks = scene.map { Minimap.Mark(label: $0.label, at: place($0.anchor.center), isTarget: false) }
+        if let anchor, guide.state != .idle {
+            marks.append(Minimap.Mark(label: "", at: place(anchor.center), isTarget: true))
+        }
+        let hand = fingerPoint ?? finger.flatMap { geometry.point(at: $0.tip, onPlaneAt: tableY) }
+        return Minimap(marks: marks, hand: hand.map(place), tone: tone)
     }
 
     @MainActor

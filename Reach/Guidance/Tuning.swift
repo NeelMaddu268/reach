@@ -35,6 +35,8 @@ struct Tuning: Equatable, Codable {
     var allergies = "peanuts"
     /// "Reached in 4.8 s" after each lock, and a session tally in the HUD.
     var reachTimer = true
+    /// Top-down radar of the table in the corner of the judge view.
+    var minimap = false
 }
 
 extension Tuning {
