@@ -36,6 +36,8 @@ final class Guide {
         var event: Event?
         /// A short instruction to say now, if nothing else is being said.
         var cue: String?
+        /// Careful guidance: say the cue now, cutting off anything playing. It's the "Down." the lock waits on.
+        var urgent = false
     }
 
     /// Tracking must stay degraded this long before the state changes to `.lost`.
@@ -64,6 +66,7 @@ final class Guide {
     private var readings = 0
     private var touches = 0
     private var downAt: TimeInterval?
+    private var handSeenAt: TimeInterval = 0
     private var pendingCue: (text: String, since: TimeInterval)?
     /// How the last lock happened ("lidar 0.6 s"), for the stats line.
     private(set) var lockNote = ""
@@ -92,10 +95,6 @@ final class Guide {
     func forgetDown() {
         downAt = nil
         lastCue = nil
-    }
-
-    static func isDown(_ cue: String) -> Bool {
-        cue == down + "." || cue == downES + "."
     }
 
     func stop() {
@@ -134,15 +133,15 @@ final class Guide {
 
         var unconfirmed = false
         if tuning.carefulGuidance {
-            // On it: Vision saw the hand in the last 0.3 s, it's inside the zone (1 cm slack once a dwell is under way, so
-            // the tip flickering over the edge doesn't restart it), LiDAR doesn't say it's hovering, and ARKit is steady.
-            let slack = insideSince == nil ? 0 : 0.01
-            let onIt = input.hasHand && input.handAge <= 0.6 && input.hovering != true && !input.poseShaky
-                && abs(input.right) <= zoneRight + slack && abs(input.forward) <= zoneForward + slack
+            // On it: the hand is in view (or held through a short Vision gap), inside the zone, LiDAR doesn't say it's
+            // hovering, and ARKit's pose is steady.
+            let onIt = input.hasHand && over && input.hovering != true && !input.poseShaky
             let moved = dwellFrom.map { hypot(input.right - $0.right, input.forward - $0.forward) > 0.04 } ?? true
-            // "Down." counts once per arrival: a re-tap or a lowering hand restarts the dwell but not the wait after it.
+            // "Down." counts once per arrival: a re-tap, a lowering hand or a Vision gap restarts the dwell but not the
+            // wait after it. Moving away, or the hand gone for 2 s, ends the arrival.
+            if input.hasHand { handSeenAt = time }
             let near = abs(input.right) <= zoneRight + 0.1 && abs(input.forward) <= zoneForward + 0.1
-            if !input.hasHand || !near { downAt = nil }
+            if (input.hasHand && !near) || time - handSeenAt > 2 { downAt = nil }
             if !onIt {
                 insideSince = nil
             } else if insideSince == nil || moved {  // start over wherever it settles: a sweep or a jump never locks
@@ -160,8 +159,8 @@ final class Guide {
                 let waited = tuning.spokenCues ? downAt.map { time - $0 >= Self.waitAfterDown } == true
                                                : time - since >= tuning.lockDwell * 4
                 // Still 0.6 s with LiDAR confirming (at the default 0.4 s hold), or still 1.8 s after "Down." without;
-                // only on a frame where Vision saw the hand, inside the zone itself (the slack only keeps the dwell).
-                if input.handAge == 0, over, time - since >= tuning.lockDwell * 1.5, confirmed || waited {
+                // only on a frame where Vision saw the hand.
+                if input.handAge == 0, time - since >= tuning.lockDwell * 1.5, confirmed || waited {
                     lockNote = String(format: "%@ %.1f s", confirmed ? "lidar" : "no lidar", time - since)
                     state = .locked
                     output.event = .locked
@@ -193,6 +192,7 @@ final class Guide {
         if tuning.spokenCues {
             output.cue = cue(input, over: over, hovering: hovering, unconfirmed: unconfirmed, outRight: outRight,
                              outForward: outForward, time: time, careful: tuning.carefulGuidance, spanish: tuning.spanish)
+            output.urgent = unconfirmed && output.cue != nil  // while unconfirmed, the only cue is that "Down."
         }
         return output
     }
@@ -229,11 +229,11 @@ final class Guide {
             guard gap >= (text == lastCue.text ? every : 0.8) else { return nil }
             // Careful: a change cuts the wait short only once it has held 0.3 s, so it doesn't flip-flop near the object.
             // ("Down." for a dwell LiDAR can't confirm has already held 0.6 s.)
-            if careful, text != lastCue.text, gap < every, !(over && unconfirmed), let pendingCue,
+            if careful, text != lastCue.text, gap < every, !unconfirmed, let pendingCue,
                time - pendingCue.since < 0.3 { return nil }
         }
         lastCue = (text, time)
-        if over && unconfirmed { downAt = downAt ?? time }  // the lock waits for a reaction to this
+        if unconfirmed { downAt = downAt ?? time }  // the lock waits for a reaction to this
         return text
     }
 

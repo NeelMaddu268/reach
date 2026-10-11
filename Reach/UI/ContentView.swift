@@ -96,6 +96,8 @@ struct TopBar: View {
                             Int(model.fps.rounded()), Int(model.latencyMs), AppConfig.geminiAPIKey.isEmpty ? "✗" : "✓",
                             model.lockNote.isEmpty ? "–" : model.lockNote))
                     .font(.system(size: 12, design: .monospaced))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .foregroundStyle(.white.opacity(0.55))
             }
         }
