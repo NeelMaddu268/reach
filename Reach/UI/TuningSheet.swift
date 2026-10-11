@@ -58,7 +58,7 @@ struct TuningSheet: View {
                     TuningSlider(title: "Ping pitch, near (Hz)", note: nil, value: $model.tuning.pingHigh, range: 500...1500)
                     TuningSlider(title: "Lock margin", note: "Grow (or, negative, shrink) the object's outline for locking.",
                                  value: $model.tuning.lockMargin, range: -0.4...0.6)
-                    TuningSlider(title: "Hold to lock (s)", note: "How long the finger stays on the object before the chime.",
+                    TuningSlider(title: "Hold to lock (s)", note: "How long the finger stays on the object before the chime (careful guidance: 1.5 times this).",
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
 

@@ -728,6 +728,7 @@ final class AppModel {
             return
         }
         audio.say(t("Looking for \(query).", "Buscando \(query)."))
+        if tuning.spanish && tuning.carefulGuidance { audio.prefetch(["Baja.", "Listo."]) }  // no bundled Spanish clips
         camera.frameQueue.async {
             self.clearTarget()
             self.guide.beginLocating()
@@ -1004,11 +1005,11 @@ final class AppModel {
                 self.targetShownAt = Date()
                 self.audio.say(announcement)
             } else if let cue = output.cue, !self.isListening {  // don't talk over the user
-                // Careful: "Down." cuts in (the hand is already over the object, so a direction still playing is stale),
-                // so the lock's wait after it starts from a "Down." that was really said.
-                if tuning.carefulGuidance, Guide.isDown(cue) { self.audio.say(cue) } else { self.audio.cue(cue) }
+                // Careful: the "Down." the lock waits on cuts in (the hand is over the object, so a direction still
+                // playing is stale), so the wait after it starts from a "Down." that was really said.
+                if output.urgent { self.audio.say(cue) } else { self.audio.cue(cue) }
             }
-            if tuning.carefulGuidance, let cue = output.cue, Guide.isDown(cue), announcement != nil || self.isListening {
+            if output.urgent, announcement != nil || self.isListening {
                 self.camera.frameQueue.async { self.guide.forgetDown() }  // not said: say it again
             }
             switch output.event {
@@ -1131,7 +1132,7 @@ final class AppModel {
         // the camera axis, which stretches with the viewing angle: along one line of sight, height = gap * (camera
         // height above the top) / depth.
         let height = gap * Double(geometry.camera.transform.columns.3.y - topY) / Double(surfaceDepth)
-        touchNow = !hovering && (-0.02...0.035).contains(height)
+        touchNow = !hovering && (0.005...0.035).contains(height)  // ~0 is LiDAR missing the finger and seeing the top
         return hovering
     }
 
