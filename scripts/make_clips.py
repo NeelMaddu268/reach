@@ -16,6 +16,7 @@ CLIPS = ROOT / "Reach/Audio/Clips"
 FIXED = [
     "Got it.", "Got them.", "I can't see your hand.", "I didn't hear anything.",
     "Say find, then an object.", "I couldn't reach Gemini.", "Let me see.", "I couldn't read that.",
+    "Hold to talk, then say find and an object.",
 ]
 
 

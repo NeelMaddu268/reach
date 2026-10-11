@@ -25,6 +25,16 @@ struct ContentView: View {
             VStack {
                 StatusHUD(model: model)
                 Spacer()
+                if model.state == .idle && !model.isListening {
+                    Text("Hold anywhere to talk: “find my keys” or “what’s this?”")
+                        .font(.callout)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityHidden(true)  // the talk button's hint says the same
+                }
                 TalkButton(model: model)
                 HStack(spacing: 12) {
                     Button(role: .destructive) {

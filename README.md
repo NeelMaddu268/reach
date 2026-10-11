@@ -43,7 +43,7 @@ The status line at the top shows hand detection, fps, latency, and whether the A
 - [x] 2. Tap to seed the tracker → audio guidance → lock ding
 - [x] 3. "Find X" by voice via Gemini
 - [x] 4. "What's this?" reader
-- [ ] 5. Polish: onboarding, voice clips, app icon
+- [x] 5. Polish: onboarding, voice clips, app icon, captions for the judge view
 
 ## Built with
 
