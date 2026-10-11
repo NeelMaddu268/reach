@@ -32,6 +32,7 @@ struct TuningSheet: View {
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
                 Section("Features") {
+                    Toggle("Dead-air killer (chirp, big captions, “Still looking”)", isOn: $model.tuning.deadAirKiller)
                     Toggle("Ask about held items (Gemini)", isOn: $model.tuning.askAboutItems)
                     TextField("Allergies, comma-separated", text: $model.tuning.allergies)
                         .textInputAutocapitalization(.never)

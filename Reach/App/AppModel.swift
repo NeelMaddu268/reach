@@ -86,6 +86,8 @@ final class AppModel {
     var readMs: Double?
     /// The last thing Reach said, shown on screen for the judges.
     var caption: String?
+    /// What the user just said, shown big for a few seconds (dead-air killer).
+    var heardCaption: String?
     /// Scanned objects as seen in the current frame, for the judge view.
     var sceneBoxes: [LabeledBox] = []
     /// The scanned object the fingertip is on.
@@ -121,6 +123,28 @@ final class AppModel {
 
     static let onboarding = "Hold to talk, then say find and an object."
 
+    @MainActor
+    private func showHeard(_ text: String) {
+        heardCaption = text
+        Task {
+            try? await Task.sleep(for: .seconds(6))
+            if heardCaption == text { heardCaption = nil }
+        }
+    }
+
+    /// Runs a Gemini wait; if it takes more than 2.5 s, says "Still looking." once (dead-air killer).
+    @MainActor
+    private func stillLooking<T>(_ work: () async throws -> T) async rethrows -> T {
+        guard tuning.deadAirKiller else { return try await work() }
+        let line = t("Still looking.", "Sigo buscando.")
+        let nudge = Task { @MainActor in
+            try await Task.sleep(for: .seconds(2.5))
+            audio.say(line)
+        }
+        defer { nudge.cancel() }
+        return try await work()
+    }
+
     /// The English or Spanish line, per the Spanish switch. Main only.
     private func t(_ english: String, _ spanish: String) -> String {
         tuning.spanish ? spanish : english
@@ -143,7 +167,12 @@ final class AppModel {
         isListening = false
         audio.setMuted(false)
         lastHeard = heard
-        switch Command(heard, spanish: tuning.spanish) {
+        let command = Command(heard, spanish: tuning.spanish)
+        if tuning.deadAirKiller {
+            if command != nil { audio.working() }
+            if !heard.isEmpty { showHeard(heard) }
+        }
+        switch command {
         case .find(let query): await find(query)
         case .whatsThis:
             if tuning.askAboutItems { await ask(nil) } else { await read() }
@@ -201,8 +230,10 @@ final class AppModel {
         lastItem = nil
         let start = CACurrentMediaTime()
         do {
-            let result = try await reader.ask(question, jpeg: snapshot.jpeg, previous: previous,
-                                              allergies: tuning.allergyList, model: tuning.geminiModel, spanish: tuning.spanish)
+            let result = try await stillLooking {
+                try await reader.ask(question, jpeg: snapshot.jpeg, previous: previous,
+                                     allergies: tuning.allergyList, model: tuning.geminiModel, spanish: tuning.spanish)
+            }
             readMs = (CACurrentMediaTime() - start) * 1000
             if previous == nil { lastItem = result.item }
             audio.say(result.spoken)
@@ -227,7 +258,7 @@ final class AppModel {
         let start = CACurrentMediaTime()
         let found: [ObjectLocator.Found]
         do {
-            found = try await locator.scan(snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish)
+            found = try await stillLooking { try await locator.scan(snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish) }
             locateMs = (CACurrentMediaTime() - start) * 1000
         } catch {
             locateMs = (CACurrentMediaTime() - start) * 1000
@@ -299,7 +330,9 @@ final class AppModel {
         audio.say(t("Let me see.", "Déjame ver."))
         guard cameraError == nil, let snapshot = await snapshot() else { return }
         do {
-            guard let found = try await locator.locate(item, in: snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish),
+            guard let found = try await stillLooking({
+                      try await locator.locate(item, in: snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish)
+                  }),
                   let crop = FrameEncoder.crop(snapshot.jpeg, to: found.box) else {
                 audio.say(t("I couldn't see your \(item). Hold it up in front of the camera and try again.",
                             "No pude ver tu \(item). Sostenlo frente a la cámara e intenta de nuevo."))
@@ -381,7 +414,7 @@ final class AppModel {
         }
         let result: (found: ObjectLocator.Found, camera: ARCamera)?
         do {
-            result = try await locate(query)
+            result = try await stillLooking { try await locate(query) }
         } catch {
             print("Locate: \(error.localizedDescription)")
             if targetLabel == query { stop() }

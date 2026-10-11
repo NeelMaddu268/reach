@@ -67,6 +67,11 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
         synth.shared.withLock { $0.dings += 1 }
     }
 
+    /// A short rising chirp: "got it, working on it".
+    func working() {
+        synth.shared.withLock { $0.chirps += 1 }
+    }
+
     /// Silences the sonar (not the ding or speech), e.g. while listening.
     func setMuted(_ muted: Bool) {
         synth.shared.withLock { $0.muted = muted }
@@ -180,6 +185,7 @@ private final class Synth {
     struct Shared {
         var tone = AudioGuide.Tone.silent
         var dings = 0
+        var chirps = 0
         var muted = false
         var duck: Float = 1
     }
@@ -190,6 +196,8 @@ private final class Synth {
 
     private var target = Shared()
     private var dingsPlayed = 0
+    private var chirpsPlayed = 0
+    private var chirpTime = 10.0
     private var phase = 0.0, frequency = 440.0, pan = 0.0, gain = 0.0, duck = 1.0
     private var beepClock = 0.0
     private var dingTime = 10.0
@@ -199,6 +207,10 @@ private final class Synth {
         if target.dings != dingsPlayed {
             dingsPlayed = target.dings
             dingTime = 0
+        }
+        if target.chirps != chirpsPlayed {
+            chirpsPlayed = target.chirps
+            chirpTime = 0
         }
         let tone = target.muted ? .silent : target.tone
         let left = buffers[0].mData!.assumingMemoryBound(to: Float.self)
@@ -220,11 +232,20 @@ private final class Synth {
             if phase > 2 * .pi { phase -= 2 * .pi }
             let sample = 0.4 * gain * sin(phase)
             let angle = (pan + 1) * .pi / 4  // equal-power pan
-            let ding = dingTime < 1.5 ? Self.ding(at: dingTime) : 0
+            let ding = (dingTime < 1.5 ? Self.ding(at: dingTime) : 0) + (chirpTime < 0.2 ? Self.chirp(at: chirpTime) : 0)
             dingTime += dt
+            chirpTime += dt
             left[i] = Float(sample * cos(angle) + ding)
             right[i] = Float(sample * sin(angle) + ding)
         }
+    }
+
+    /// Two quick rising blips (880 → 1175 Hz), centered.
+    private static func chirp(at t: Double) -> Double {
+        func blip(_ t: Double, _ frequency: Double) -> Double {
+            t > 0 && t < 0.06 ? sin(2 * .pi * frequency * t) * sin(.pi * t / 0.06) : 0
+        }
+        return 0.2 * (blip(t, 880) + blip(t - 0.08, 1175))
     }
 
     /// Two rising bell notes, centered.

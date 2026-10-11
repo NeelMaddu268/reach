@@ -47,6 +47,9 @@ struct Tuning: Equatable, Codable {
     var autoTorch = false
     /// Listen and speak in Spanish: es-US recognizer, Spanish lines, live ElevenLabs voice.
     var spanish = false
+    /// A "working" chirp the moment a command is recognized, big captions of what was heard and said, and
+    /// "Still looking." when Gemini takes more than 2.5 s.
+    var deadAirKiller = true
 }
 
 extension Tuning {

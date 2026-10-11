@@ -18,6 +18,14 @@ struct ContentView: View {
                         MinimapView(map: map)
                             .position(x: imageRect.maxX - 85, y: imageRect.minY + 85)
                     }
+                    if model.tuning.deadAirKiller {
+                        VStack {
+                            Spacer()
+                            CaptionView(heard: model.heardCaption, said: model.caption)
+                        }
+                        .frame(width: imageRect.width - 16, height: imageRect.height - 16)
+                        .position(x: imageRect.midX, y: imageRect.midY)
+                    }
                     TouchSurface(imageRect: imageRect,
                                  onPick: model.seed,
                                  onHoldStart: model.beginListening,
