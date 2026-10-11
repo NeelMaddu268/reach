@@ -45,6 +45,8 @@ struct Tuning: Equatable, Codable {
     var myObjects = false
     /// Flashlight on in a dark room, off when it's bright.
     var autoTorch = false
+    /// Listen and speak in Spanish: es-US recognizer, Spanish lines, live ElevenLabs voice.
+    var spanish = false
 }
 
 extension Tuning {

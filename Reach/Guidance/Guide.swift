@@ -122,30 +122,32 @@ final class Guide {
             volume: input.hasHand ? 1 : 0.35)
 
         if tuning.spokenCues {
-            output.cue = cue(input, over: over, toGoDown: toGoDown, time: time)
+            output.cue = cue(input, over: over, toGoDown: toGoDown, time: time, spanish: tuning.spanish)
         }
         return output
     }
 
     /// Speaks only when needed: the hand heads the wrong way or stalls, or hovers over the object.
-    private func cue(_ input: Input, over: Bool, toGoDown: Double, time: TimeInterval) -> String? {
+    private func cue(_ input: Input, over: Bool, toGoDown: Double, time: TimeInterval, spanish: Bool) -> String? {
         var text: String?
         if !input.hasHand {
             best = nil
             handMissingSince = handMissingSince ?? time
-            if time - handMissingSince! > 3 { text = "I can't see your hand." }
+            if time - handMissingSince! > 3 { text = spanish ? "No veo tu mano." : "I can't see your hand." }
         } else if over {
             handMissingSince = nil
             best = nil
             // Once on arriving over it, then again if the hand stays hovering.
-            if toGoDown > 0, overSince == nil || time - lastCueTime >= Self.stallAfter + 0.5 { text = Self.lower + "." }
+            if toGoDown > 0, overSince == nil || time - lastCueTime >= Self.stallAfter + 0.5 {
+                text = (spanish ? Self.lowerES : Self.lower) + "."
+            }
             overSince = overSince ?? time
         } else {
             handMissingSince = nil
             overSince = nil
             let distance = hypot(input.right, input.forward)
             if let best, distance > best.distance + Self.wrongWayBy || time - best.time > Self.stallAfter {
-                text = Self.directions[steadySector(input)] + "."
+                text = (spanish ? Self.directionsES : Self.directions)[steadySector(input)] + "."
             }
             if text != nil || best == nil || distance < best!.distance - Self.progressBy {
                 best = (distance, time)
@@ -164,11 +166,16 @@ final class Guide {
     private var lastCueTime: TimeInterval { lastCue?.time ?? 0 }
 
     /// "Found keys, out and to the right."
-    static func announcement(_ label: String, _ input: Input) -> String {
-        guard hypot(input.right, input.forward) >= 0.05 else { return "Found \(label), right in front of you." }
-        let way = ["straight out", "out and to the right", "to the right", "in and to the right",
-                   "straight in", "in and to the left", "to the left", "out and to the left"][sector(input)]
-        return "Found \(label), \(way)."
+    static func announcement(_ label: String, _ input: Input, spanish: Bool = false) -> String {
+        guard hypot(input.right, input.forward) >= 0.05 else {
+            return spanish ? "Encontré \(label), justo frente a ti." : "Found \(label), right in front of you."
+        }
+        let way = spanish
+            ? ["al frente", "al frente y a la derecha", "a la derecha", "hacia ti y a la derecha",
+               "hacia ti", "hacia ti y a la izquierda", "a la izquierda", "al frente y a la izquierda"][sector(input)]
+            : ["straight out", "out and to the right", "to the right", "in and to the right",
+               "straight in", "in and to the left", "to the left", "out and to the left"][sector(input)]
+        return spanish ? "Encontré \(label), \(way)." : "Found \(label), \(way)."
     }
 
     /// Eight ways to move, clockwise from straight out (away from the body). "In" is toward the body.
@@ -176,6 +183,10 @@ final class Guide {
     static let directions = ["Straight out", "Out and right", "Right", "In and right",
                              "Straight in", "In and left", "Left", "Out and left"]
     static let lower = "Lower"
+    /// Spanish versions (spoken live by ElevenLabs; no pre-made clips).
+    static let directionsES = ["Al frente", "Al frente y a la derecha", "Derecha", "Hacia ti y a la derecha",
+                               "Hacia ti", "Hacia ti y a la izquierda", "Izquierda", "Al frente y a la izquierda"]
+    static let lowerES = "Baja"
 
     /// Index into `directions` for the way from the hand to the object.
     static func sector(_ input: Input) -> Int {

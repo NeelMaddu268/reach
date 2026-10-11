@@ -41,6 +41,7 @@ struct TuningSheet: View {
                     Toggle("“Where did I leave…?”", isOn: $model.tuning.whereDidILeave)
                     Toggle("“This is my …” (my objects)", isOn: $model.tuning.myObjects)
                     Toggle("Auto flashlight", isOn: $model.tuning.autoTorch)
+                    Toggle("Español (Spanish)", isOn: $model.tuning.spanish)
                 }
                 Section("Voice") {
                     Toggle("Speak when needed", isOn: $model.tuning.spokenCues)

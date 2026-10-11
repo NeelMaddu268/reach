@@ -16,9 +16,8 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     private let engine = AVAudioEngine()
     private let synth = Synth()
     private let speech = AVSpeechSynthesizer()
-    private let systemVoice = AVSpeechSynthesisVoice.speechVoices()
-        .filter { $0.language == "en-US" }
-        .max { $0.quality.rawValue < $1.quality.rawValue }
+    /// Speak Spanish: live ElevenLabs with language "es" (the bundled clips are English) and an es-US fallback voice.
+    var spanish = false
     private var player: AVAudioPlayer?
     private var fetch: Task<Void, Never>?
     /// Called on main with each thing said, for on-screen captions (the judges can't hear the earbuds).
@@ -93,9 +92,10 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     /// Fetches and caches speech for phrases about to be needed (e.g. object names), so they play instantly.
     func prefetch(_ texts: [String]) {
         guard !AppConfig.elevenLabsAPIKey.isEmpty else { return }
+        let spanish = spanish
         Task.detached(priority: .utility) {
             for text in texts where Self.storedAudio(for: text) == nil {
-                if let audio = try? await ElevenLabs.speech(text) { Self.cache(audio, for: text) }
+                if let audio = try? await ElevenLabs.speech(text, spanish: spanish) { Self.cache(audio, for: text) }
             }
         }
     }
@@ -111,8 +111,9 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
             speakWithSystemVoice(text)
             return
         }
+        let spanish = spanish
         fetch = Task { @MainActor [weak self] in
-            let audio = try? await ElevenLabs.speech(text)
+            let audio = try? await ElevenLabs.speech(text, spanish: spanish)
             guard let self, !Task.isCancelled else { return }
             fetch = nil
             if let audio {
@@ -133,7 +134,10 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
 
     private func speakWithSystemVoice(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = systemVoice
+        let language = spanish ? "es-US" : "en-US"
+        utterance.voice = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language == language }
+            .max { $0.quality.rawValue < $1.quality.rawValue }  // the best installed one
         speech.speak(utterance)
     }
 

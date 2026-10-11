@@ -14,7 +14,12 @@ enum Command: Equatable {
     case stop
 
     /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
-    init?(_ transcript: String) {
+    init?(_ transcript: String, spanish: Bool = false) {
+        if spanish {
+            guard let command = Self.spanish(transcript) else { return nil }
+            self = command
+            return
+        }
         let text = transcript.lowercased()
             .replacingOccurrences(of: "’", with: "'")
             .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
@@ -65,9 +70,46 @@ enum Command: Equatable {
     }
 }
 
+extension Command {
+    /// "Encuentra mis llaves", "¿qué es esto?", "¿qué hay en la mesa?", "¿dónde están mis llaves?", "esta es mi taza", "para".
+    private static func spanish(_ transcript: String) -> Command? {
+        // Accents folded, so "qué" and "que" both match.
+        let text = transcript.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es"))
+            .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+        if ["para", "alto", "basta"].contains(text) || text.hasPrefix("detente") || text.hasPrefix("cancela") { return .stop }
+        if ["que hay en la mesa", "que hay frente a mi", "que ves", "mira alrededor", "escanea"].contains(where: text.contains) {
+            return .scan
+        }
+        if ["que es esto", "que es eso", "que tengo en la mano", "lee esto"].contains(where: text.contains) { return .whatsThis }
+        func object(after trigger: String) -> String? {
+            guard let range = text.range(of: trigger + " ") else { return nil }
+            var words = text[range.upperBound...].split(separator: " ").map(String.init)
+            while let first = words.first, ["me", "mi", "mis", "el", "la", "los", "las", "un", "una", "unos", "unas"].contains(first) {
+                words.removeFirst()
+            }
+            if words.suffix(2) == ["por", "favor"] { words.removeLast(2) }
+            return words.isEmpty ? nil : words.joined(separator: " ")
+        }
+        for trigger in ["esta es mi", "este es mi", "estas son mis", "estos son mis"] {
+            if let object = object(after: trigger) { return .remember(object) }
+        }
+        for trigger in ["encuentra", "busca", "donde deje", "donde puse", "donde esta", "donde estan"] {
+            if let object = object(after: trigger) { return trigger.hasPrefix("donde") ? .whereIs(object) : .find(object) }
+        }
+        let questionStarts = ["es ", "tiene ", "cuantas ", "cuantos ", "cuanto ", "cuanta ", "que ", "cual ", "puedo ",
+                              "debo ", "cuando ", "esta ", "contiene ", "lleva "]
+        if questionStarts.contains(where: text.hasPrefix) { return .ask(transcript.trimmingCharacters(in: .whitespaces)) }
+        return nil
+    }
+}
+
 /// Push-to-talk speech recognition, on device. Call from the main thread.
 final class VoiceInput {
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    /// Listen in Spanish (es-US) instead of English.
+    var spanish = false {
+        didSet { recognizer = SFSpeechRecognizer(locale: Locale(identifier: spanish ? "es-US" : "en-US")) }
+    }
+    private var recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private let engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -91,7 +133,7 @@ final class VoiceInput {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-        request.contextualStrings = ["find", "what's this", "stop"]
+        request.contextualStrings = spanish ? ["encuentra", "qué es esto", "qué hay en la mesa", "para"] : ["find", "what's this", "stop"]
         transcript = ""
         isFinal = false
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
