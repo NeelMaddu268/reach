@@ -13,8 +13,9 @@ final class Guide {
         /// Object center minus hand, in meters along the user's right and forward on the table.
         var right: Double
         var forward: Double
-        /// Fingertip height above the object's top (meters); nil when unknown (no depth reading).
-        var above: Double?
+        /// LiDAR says the fingertip is clearly in front of the object along the line of sight (hovering above it);
+        /// nil when the reading isn't trustworthy. Only ever blocks a lock: no reading never does.
+        var hovering: Bool?
         /// Half the object's footprint (meters) along right / forward.
         var halfRight: Double
         var halfForward: Double
@@ -36,8 +37,6 @@ final class Guide {
     static let maxDistance = 0.5
     /// Smallest lock half-size (meters), so small objects stay reachable.
     static let minLockHalf = 0.03
-    /// The fingertip counts as touching within this height above the object's top (meters).
-    static let touchHeight = 0.04
     /// Speak up when the hand has made no progress for this long…
     static let stallAfter: TimeInterval = 2
     /// …or has moved this much farther away than its closest recent point (meters).
@@ -99,9 +98,10 @@ final class Guide {
         let outRight = max(abs(input.right) - zoneRight, 0)
         let outForward = max(abs(input.forward) - zoneForward, 0)
         let over = outRight == 0 && outForward == 0
-        let toGoDown = max((input.above ?? 0) - Self.touchHeight, 0)
+        let hovering = over && input.hovering == true
+        let toGoDown = hovering ? 0.05 : 0.0  // keeps the sonar just short of "there" until the finger comes down
 
-        if input.hasHand && over && toGoDown == 0 {
+        if input.hasHand && over && !hovering {
             insideSince = insideSince ?? time
             if time - insideSince! >= tuning.lockDwell {
                 state = .locked
@@ -122,13 +122,13 @@ final class Guide {
             volume: input.hasHand ? 1 : 0.35)
 
         if tuning.spokenCues {
-            output.cue = cue(input, over: over, toGoDown: toGoDown, time: time, spanish: tuning.spanish)
+            output.cue = cue(input, over: over, hovering: hovering, time: time, spanish: tuning.spanish)
         }
         return output
     }
 
     /// Speaks only when needed: the hand heads the wrong way or stalls, or hovers over the object.
-    private func cue(_ input: Input, over: Bool, toGoDown: Double, time: TimeInterval, spanish: Bool) -> String? {
+    private func cue(_ input: Input, over: Bool, hovering: Bool, time: TimeInterval, spanish: Bool) -> String? {
         var text: String?
         if !input.hasHand {
             best = nil
@@ -138,7 +138,7 @@ final class Guide {
             handMissingSince = nil
             best = nil
             // Once on arriving over it, then again if the hand stays hovering.
-            if toGoDown > 0, overSince == nil || time - lastCueTime >= Self.stallAfter + 0.5 {
+            if hovering, overSince == nil || time - lastCueTime >= Self.stallAfter + 0.5 {
                 text = (spanish ? Self.lowerES : Self.lower) + "."
             }
             overSince = overSince ?? time
