@@ -140,9 +140,6 @@ final class AppModel {
         audio.spanish = tuning.spanish
         audio.networkFallback = tuning.networkFallback
         _ = await voice.requestPermissions()  // ask now, not mid-demo
-        if SiriRequests.shared.pending == nil || !tuning.siriShortcuts {  // opened by Siri: get straight to it
-            audio.say(t(Self.onboarding, "Mantén presionado para hablar, y di encuentra y un objeto."))
-        }
         SiriRequests.shared.handler = { [weak self] request in
             Task { await self?.handleSiri(request) }
         }
@@ -161,8 +158,6 @@ final class AppModel {
             await scan()
         }
     }
-
-    static let onboarding = "Hold to talk, then say find and an object."
 
     /// Voice commands of the features that are switched on.
     private var commandExtras: Command.Extras {

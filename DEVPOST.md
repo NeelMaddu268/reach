@@ -68,7 +68,7 @@ Swift, SwiftUI, ARKit, LiDAR scene depth, SceneKit, Vision (hand pose, text reco
 - Check that **Dead-air killer**, **Network failure path**, **Judge view polish**, **Ask about held items** and **Reach timer** are on (the defaults), and that Allergies says "peanuts".
 - Turn on **Minimap**, **Obstacle warning** and **Money reader**.
 
-1. **Launch.** Reach says: "Hold to talk, then say find and an object."
+1. **Launch.** Reach starts quietly, with "Hold anywhere to talk" on screen.
 2. **Table scan.** Hold, say **"what's on the table?"**, let go.
    - Chirp, and a big caption shows what was said.
    - Reach says "I see 5 things, left to right: …". Cyan boxes pop in one after another, the Gemini chip shows the time, and the minimap fills in.
