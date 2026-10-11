@@ -20,6 +20,7 @@ Switchable in **Tuning (slider button) → Features**, saved across launches:
 
 | Switch | Default | What it does |
 | --- | --- | --- |
+| Careful guidance | on | "Got them" only when the camera sees the finger right now, held still on the object, with LiDAR reading it at the object's top (without a LiDAR reading: after "Down." and staying put). No directions from a stale or just-found hand; the object's height can't creep up to a hand over it; a moved object is re-pinned only when two looks agree. Off = the guidance from the demo video |
 | Dead-air killer | on | A chirp the moment a command is heard, big captions of what you said and what Reach said, "Still looking." when Gemini is slow |
 | Network failure path | on | Never silent: "I can't reach the internet. Tap the object on screen and I'll guide you."; the iPhone voice takes over instantly if the live voice is slow |
 | Siri shortcuts | on | "Hey Siri, Reach find" → "What should I find?" → "my keys" → Reach opens and guides; "Hey Siri, what's on the table in Reach" → opens and scans. Off = Siri just opens the app |
