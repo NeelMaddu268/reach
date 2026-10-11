@@ -12,9 +12,21 @@ enum Command: Equatable {
     /// "This is my mug": remember what the user's own one looks like.
     case remember(String)
     case stop
+    /// "How much money is this?", "count my money" (money reader).
+    case money
+
+    /// Commands that belong to features switched on in Tuning. With none on, parsing is exactly as before.
+    struct Extras: OptionSet {
+        let rawValue: Int
+        static let money = Extras(rawValue: 1 << 0)
+    }
 
     /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
-    init?(_ transcript: String, spanish: Bool = false) {
+    init?(_ transcript: String, spanish: Bool = false, extras: Extras = []) {
+        if let command = Self.extra(transcript, spanish: spanish, extras: extras) {
+            self = command
+            return
+        }
         if spanish {
             guard let command = Self.spanish(transcript) else { return nil }
             self = command
@@ -71,6 +83,20 @@ enum Command: Equatable {
 }
 
 extension Command {
+    /// Phrases for switched-on features, checked before everything else.
+    private static func extra(_ transcript: String, spanish: Bool, extras: Extras) -> Command? {
+        guard !extras.isEmpty else { return nil }
+        let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: spanish ? "es" : "en"))
+        if extras.contains(.money) {
+            let phrases = spanish ? ["cuanto dinero", "que billete", "cuenta mi dinero", "cuenta el dinero", "cuanto efectivo"]
+                                  : ["how much money", "what bill", "which bill", "count my money", "count the money",
+                                     "count this money", "how much cash", "count my cash"]
+            if phrases.contains(where: text.contains) { return .money }
+        }
+        return nil
+    }
+
     /// "Encuentra mis llaves", "¿qué es esto?", "¿qué hay en la mesa?", "¿dónde están mis llaves?", "esta es mi taza", "para".
     private static func spanish(_ transcript: String) -> Command? {
         // Accents folded, so "qué" and "que" both match.
