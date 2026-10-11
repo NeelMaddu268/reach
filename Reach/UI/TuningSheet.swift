@@ -37,6 +37,7 @@ struct TuningSheet: View {
                         .textInputAutocapitalization(.never)
                     Toggle("Reach timer", isOn: $model.tuning.reachTimer)
                     Toggle("Minimap", isOn: $model.tuning.minimap)
+                    Toggle("Obstacle warning (after a scan)", isOn: $model.tuning.obstacleWarning)
                 }
                 Section("Voice") {
                     Toggle("Speak when needed", isOn: $model.tuning.spokenCues)

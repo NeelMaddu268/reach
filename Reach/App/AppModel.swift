@@ -40,6 +40,8 @@ final class AppModel {
     @ObservationIgnored private var lastTouchTime: TimeInterval = 0
     /// When the current guidance started (host clock), for the reach timer.
     @ObservationIgnored private var guidingSince: TimeInterval = 0
+    /// One obstacle warning per reach.
+    @ObservationIgnored private var obstacleWarned = false
     // Main only:
     @ObservationIgnored private var relocating = false
     @ObservationIgnored private var reading = false
@@ -215,7 +217,8 @@ final class AppModel {
             self.touching = nil
         }
         audio.say(Self.summary(objects.map(\.label)))
-        audio.prefetch(objects.map { Self.touchName($0.label) })  // so touch-to-explore names play instantly
+        // So touch-to-explore names and obstacle warnings play instantly.
+        audio.prefetch(objects.map { Self.touchName($0.label) } + objects.map { Self.obstaclePhrase($0.label) })
     }
 
     /// "I see 4 things, left to right: keys, blue mug, phone and pill bottle."
@@ -319,6 +322,7 @@ final class AppModel {
         smoothedAbove = nil
         focusLocked = false  // refocus on the new target with the next frame
         guidingSince = CACurrentMediaTime()
+        obstacleWarned = false
         guide.start()
     }
 
@@ -425,6 +429,14 @@ final class AppModel {
         let touchedLabel = touching.map { scene[$0].label }
 
         let reachTime = output.event == .locked ? time - guidingSince : nil
+        var obstacleWarning: String?
+        if tuning.obstacleWarning, !scene.isEmpty, !obstacleWarned, guide.state == .guiding, let anchor, let finger,
+           let hand = fingerPoint ?? geometry.point(at: finger.tip, onPlaneAt: anchor.tableY),
+           let axes = geometry.axes(onPlaneAt: anchor.tableY),
+           let label = obstacle(from: hand, to: anchor, axes: axes) {
+            obstacleWarning = Self.obstaclePhrase(label)
+            obstacleWarned = true
+        }
         let minimap = tuning.minimap ? makeMinimap(geometry: geometry, finger: finger, fingerPoint: fingerPoint, tone: output.tone) : nil
 
         let state = guide.state
@@ -443,6 +455,7 @@ final class AppModel {
             if let touchedName, !self.isListening {
                 self.audio.say(touchedName)
             }
+            if let obstacleWarning { self.audio.say(obstacleWarning) }
             if let announcement {
                 self.audio.say(announcement)
             } else if let cue = output.cue, !self.isListening {  // don't talk over the user
@@ -460,6 +473,30 @@ final class AppModel {
                 self.fps = self.fps == 0 ? 1 / frameInterval : self.fps * 0.9 + 0.1 / frameInterval
             }
         }
+    }
+
+    /// The first scanned object (not the target) within 6 cm of the hand's straight path to the target,
+    /// on the table plane. Frame queue only.
+    private func obstacle(from hand: simd_float3, to target: ObjectAnchor, axes: (right: simd_float3, forward: simd_float3)) -> String? {
+        let start = simd_float2(hand.x, hand.z), end = simd_float2(target.center.x, target.center.z)
+        let path = end - start
+        let length = simd_length(path)
+        guard length > 0.05 else { return nil }
+        var first: (along: Float, label: String)?
+        for object in scene {
+            let center = simd_float2(object.anchor.center.x, object.anchor.center.z)
+            guard simd_distance(center, end) > 0.03 else { continue }  // the target itself
+            let along = simd_dot(center - start, path) / (length * length)
+            guard along > 0.05, along < 0.95 else { continue }  // between the hand and the target
+            let half = object.anchor.halfExtents(right: axes.right, forward: axes.forward)
+            let gap = simd_distance(center, start + along * path) - Float(half.right + half.forward) / 2
+            if gap < 0.06, along < (first?.along ?? .infinity) { first = (along, object.label) }
+        }
+        return first?.label
+    }
+
+    private static func obstaclePhrase(_ label: String) -> String {
+        "Careful, \(label) in the way."
     }
 
     /// Pinned objects and the hand, top-down in meters from the user's body. Frame queue only.

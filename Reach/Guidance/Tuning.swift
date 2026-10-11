@@ -37,6 +37,8 @@ struct Tuning: Equatable, Codable {
     var reachTimer = true
     /// Top-down radar of the table in the corner of the judge view.
     var minimap = false
+    /// "Careful, mug in the way." when a scanned object sits on the hand's path to the target (needs a table scan).
+    var obstacleWarning = false
 }
 
 extension Tuning {
