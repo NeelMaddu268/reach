@@ -7,6 +7,8 @@ enum Command: Equatable {
     /// Any other question, about the held item: "is this decaf?", "how many do I take?"
     case ask(String)
     case scan
+    /// "Where are my keys?", "where did I leave my wallet?"
+    case whereIs(String)
     case stop
 
     /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
@@ -31,7 +33,8 @@ enum Command: Equatable {
             self = .whatsThis
             return
         }
-        for trigger in ["find", "where's", "where is", "where are", "look for"] {
+        let triggers = ["find", "look for", "where did i leave", "where did i put", "where's", "where is", "where are"]
+        for trigger in triggers {
             guard let range = text.range(of: trigger + " ") else { continue }
             var words = text[range.upperBound...].split(separator: " ").map(String.init)
             while let first = words.first, ["me", "my", "the", "a", "an", "our", "your"].contains(first) {
@@ -39,7 +42,8 @@ enum Command: Equatable {
             }
             if words.last == "please" { words.removeLast() }
             guard !words.isEmpty else { return nil }
-            self = .find(words.joined(separator: " "))
+            let object = words.joined(separator: " ")
+            self = trigger.hasPrefix("where") ? .whereIs(object) : .find(object)
             return
         }
         let questionStarts = ["is ", "does ", "do ", "how ", "what ", "which ", "can ", "should ", "when ", "are ",
