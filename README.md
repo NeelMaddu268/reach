@@ -1,10 +1,12 @@
 # Reach
 
+![Reach puts your hand on what you're looking for](docs/images/reach-hero.png)
+
 Reach guides a blind person's hand to an object on a table.
 
-Wear the iPhone on a chest mount with earbuds in. Say "find my keys": Reach finds them, pins them in 3D, and steers your hand with a sonar in your ears (ticks on the side of the keys, faster as you get closer, a steady tone when you're right above them), plus a word when you need correcting ("Out and right.", "Lower."). It dings and says "Got them" only when your fingertip actually touches the keys, using the LiDAR depth sensor. Ask "what's on the table?" to hear everything in front of you, then run your hand over the table and Reach names whatever your finger touches. Hold something up and ask about it: "what's this?", "does this have peanuts?".
+Wear the iPhone on a chest mount with earbuds in. Say "find my keys": Reach finds them, pins them in 3D, and steers your hand with a sonar in your ears (ticks on the side of the keys, faster as you get closer, a steady tone when you're right above them), plus a spoken direction every second or so ("Farther and right.", "A little left.", "Down."). It dings and says "Got them" only when your fingertip actually touches the keys, using the LiDAR depth sensor. Ask "what's on the table?" to hear everything in front of you, then run your hand over the table and Reach names whatever your finger touches. Hold something up and ask about it: "what's this?", "does this have peanuts?".
 
-Built at Hacklanta II.
+Built at Hacklanta II. The pictures in this README are drawn mockups of the app's screens.
 
 ## Features
 
@@ -13,6 +15,8 @@ Always on:
 - **Find by voice:** "find my keys" → Gemini finds the keys → ARKit pins them to the table → sonar + spoken nudges → ding, "Got them."
 - **Table scan + touch to explore:** "what's on the table?" names every object left to right and pins each one. Sweeping a hand over the table names the object under the fingertip. "Find" then goes straight to a scanned object.
 - **Judge view:** the mirrored screen shows the camera, labeled boxes, the fingertip, the guidance line, and captions of everything Reach says.
+
+![Touch to explore: Reach names whatever your finger lands on](docs/images/reach-explore.png)
 
 Switchable in **Tuning (slider button) → Features**, saved across launches:
 
@@ -40,6 +44,8 @@ With every switch off, find → guide → lock works exactly as it did before th
 ### Voice commands
 
 Hold anywhere on the screen (or the blue button), speak, let go.
+
+![Everything works by voice](docs/images/reach-ask.png)
 
 | English | Español |
 | --- | --- |
@@ -75,6 +81,8 @@ open Reach.xcodeproj
 - `scripts/make_icon.swift`: draws the app icon.
 
 ## How it works
+
+![From "find my keys" to "Got them."](docs/images/reach-how.png)
 
 | Module | What it does |
 | --- | --- |
