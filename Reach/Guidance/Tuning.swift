@@ -68,6 +68,8 @@ struct Tuning: Equatable, Codable {
     var showStats = false
     /// While guiding, re-check every ~2 s where the object is (Gemini Flash-Lite) and re-pin it if someone moved it.
     var followMovedObjects = true
+    /// After a table scan, the fingertip landing on a scanned object says its name.
+    var touchToExplore = false
 }
 
 extension Tuning {

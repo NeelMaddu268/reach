@@ -23,6 +23,7 @@ struct TuningSheet: View {
                     feature("This is my …", "person.crop.square", $model.tuning.myObjects)
                     feature("Where did I leave …", "clock.arrow.circlepath", $model.tuning.whereDidILeave)
                     feature("Follow moved objects", "arrow.up.and.down.and.arrow.left.and.right", $model.tuning.followMovedObjects)
+                    feature("Touch to explore", "hand.point.up.left", $model.tuning.touchToExplore)
                     feature("Obstacle warning", "exclamationmark.triangle", $model.tuning.obstacleWarning)
                     feature("Watch mode", "eye", $model.tuning.watchMode)
                     feature("Siri shortcuts", "mic.badge.plus", $model.tuning.siriShortcuts)
