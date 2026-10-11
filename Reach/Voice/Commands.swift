@@ -14,11 +14,14 @@ enum Command: Equatable {
     case stop
     /// "How much money is this?", "count my money" (money reader).
     case money
+    /// "Is this my lisinopril?" (medication check).
+    case checkMine(String)
 
     /// Commands that belong to features switched on in Tuning. With none on, parsing is exactly as before.
     struct Extras: OptionSet {
         let rawValue: Int
         static let money = Extras(rawValue: 1 << 0)
+        static let medicationCheck = Extras(rawValue: 1 << 1)
     }
 
     /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
@@ -93,6 +96,15 @@ extension Command {
                                   : ["how much money", "what bill", "which bill", "count my money", "count the money",
                                      "count this money", "how much cash", "count my cash"]
             if phrases.contains(where: text.contains) { return .money }
+        }
+        if extras.contains(.medicationCheck) {
+            let triggers = spanish ? ["es este mi", "es esta mi", "son estos mis", "son estas mis", "es mi", "son mis"]
+                                   : ["is this my", "is that my", "are these my", "are those my"]
+            for trigger in triggers {
+                guard let range = text.range(of: trigger + " ") else { continue }
+                let name = text[range.upperBound...].trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+                if !name.isEmpty { return .checkMine(name) }
+            }
         }
         return nil
     }

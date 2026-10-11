@@ -177,7 +177,7 @@ struct Reader {
     }
 
     /// Text Vision can read in the photo, top to bottom.
-    private static func recognizeText(in jpeg: Data) async -> [String] {
+    static func recognizeText(in jpeg: Data) async -> [String] {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNRecognizeTextRequest()

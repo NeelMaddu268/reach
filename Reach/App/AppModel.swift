@@ -19,6 +19,7 @@ final class AppModel {
     private let locator = ObjectLocator()
     private let reader = Reader()
     private let moneyReader = MoneyReader()
+    private let medicationCheck = MedicationCheck()
     private let hands = HandTracker()
     private let guide = Guide()
     @ObservationIgnored private let frameTuning = OSAllocatedUnfairLock(initialState: Tuning.load())
@@ -132,6 +133,7 @@ final class AppModel {
     private var commandExtras: Command.Extras {
         var extras: Command.Extras = []
         if tuning.moneyReader { extras.insert(.money) }
+        if tuning.medicationCheck { extras.insert(.medicationCheck) }
         return extras
     }
 
@@ -192,8 +194,9 @@ final class AppModel {
             if tuning.askAboutItems { await ask(question) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }
         case .scan: await scan()
         case .money: await countMoney()
+        case .checkMine(let name): await checkMine(name)
         case .remember(let item):
-            if tuning.myObjects { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
+            if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
                 await whereIs(item)
@@ -282,6 +285,35 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Money: \(error.localizedDescription)")
+            geminiFailed(t("I couldn't read that.", "No pude leer eso."))
+        }
+    }
+
+    // MARK: Is this my medicine?
+
+    /// "Is this my lisinopril?": the held bottle's label against the one saved with "this is my lisinopril".
+    @MainActor
+    func checkMine(_ name: String) async {
+        guard !reading else { return }
+        guard let photo = MyObjects.reference(for: name), let text = MyObjects.text(for: name) else {
+            return audio.say(t("I don't have your \(name) saved yet. Hold it up and say this is my \(name).",
+                               "Todavía no tengo guardado tu \(name). Sostenlo y di esta es mi \(name)."))
+        }
+        reading = true
+        defer { reading = false }
+        audio.say(t("Let me see.", "Déjame ver."))
+        guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
+        let start = CACurrentMediaTime()
+        do {
+            let answer = try await stillLooking {
+                try await medicationCheck.check(name, jpeg: snapshot.jpeg, saved: (photo, text), model: tuning.geminiModel,
+                                                spanish: tuning.spanish)
+            }
+            readMs = (CACurrentMediaTime() - start) * 1000
+            audio.say(answer)
+        } catch {
+            readMs = (CACurrentMediaTime() - start) * 1000
+            print("Check: \(error.localizedDescription)")
             geminiFailed(t("I couldn't read that.", "No pude leer eso."))
         }
     }
@@ -381,6 +413,9 @@ final class AppModel {
                 return
             }
             try MyObjects.save(crop, as: item)
+            if tuning.medicationCheck {  // keep its printed label for "is this my …?"
+                try MyObjects.saveText(await Reader.recognizeText(in: crop).joined(separator: " | "), as: item)
+            }
             audio.say(t("Got it. I'll remember your \(item).", "Listo. Recordaré tu \(item)."))
         } catch {
             print("Remember: \(error.localizedDescription)")
