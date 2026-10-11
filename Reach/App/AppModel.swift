@@ -38,6 +38,8 @@ final class AppModel {
     /// Touch-to-explore: the scanned object under the fingertip, and when the finger was last on one.
     @ObservationIgnored private var touching: Int?
     @ObservationIgnored private var lastTouchTime: TimeInterval = 0
+    /// When the current guidance started (host clock), for the reach timer.
+    @ObservationIgnored private var guidingSince: TimeInterval = 0
     // Main only:
     @ObservationIgnored private var relocating = false
     @ObservationIgnored private var reading = false
@@ -79,6 +81,10 @@ final class AppModel {
     var sceneBoxes: [LabeledBox] = []
     /// The scanned object the fingertip is on.
     var touchedLabel: String?
+    /// Seconds from guidance start to lock, for each reach this session.
+    var reachTimes: [Double] = []
+    /// "Reached in 4.8 s", shown big for a few seconds after a lock.
+    var reachBanner: String?
 
     struct LabeledBox {
         var label: String
@@ -311,6 +317,7 @@ final class AppModel {
         pendingAnnouncementSince = CACurrentMediaTime()  // same clock as frame timestamps
         smoothedAbove = nil
         focusLocked = false  // refocus on the new target with the next frame
+        guidingSince = CACurrentMediaTime()
         guide.start()
     }
 
@@ -416,6 +423,8 @@ final class AppModel {
         let sceneBoxes = scene.compactMap { object in object.anchor.box(in: frame.camera).map { LabeledBox(label: object.label, box: $0) } }
         let touchedLabel = touching.map { scene[$0].label }
 
+        let reachTime = output.event == .locked ? time - guidingSince : nil
+
         let state = guide.state
         let zone = box.map { $0.insetBy(dx: -$0.width * tuning.lockMargin, dy: -$0.height * tuning.lockMargin) }
         let latency = (CACurrentMediaTime() - time) * 1000
@@ -437,7 +446,9 @@ final class AppModel {
                 self.audio.cue(cue)
             }
             switch output.event {
-            case .locked: self.audio.say(Self.gotIt(self.targetLabel))
+            case .locked:
+                self.audio.say(Self.gotIt(self.targetLabel))
+                if let reachTime { self.recordReach(reachTime) }
             case .found: Task { await self.relocate() }
             case .lost, nil: break
             }
@@ -445,6 +456,18 @@ final class AppModel {
             if frameInterval > 0, frameInterval < 1 {
                 self.fps = self.fps == 0 ? 1 / frameInterval : self.fps * 0.9 + 0.1 / frameInterval
             }
+        }
+    }
+
+    @MainActor
+    private func recordReach(_ seconds: Double) {
+        guard tuning.reachTimer else { return }
+        reachTimes.append(seconds)
+        let banner = String(format: "Reached in %.1f s", seconds)
+        reachBanner = banner
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            if reachBanner == banner { reachBanner = nil }
         }
     }
 
