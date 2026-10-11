@@ -1,81 +1,101 @@
 import SwiftUI
 
-/// Live sliders for the guidance feel. The camera stays usable above the sheet at half height.
+/// Settings: demo features first, then the guidance feel. At half height the camera stays usable above it.
 struct TuningSheet: View {
     @Bindable var model: AppModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Fingertip smoothing") {
-                    TuningSlider(title: "Steadiness at rest", note: "lower = steadier dot, more lag",
+                Section {
+                    feature("Spoken coaching", "figure.walk.motion", $model.tuning.spokenCues)
+                    feature("Ask about held items", "text.viewfinder", $model.tuning.askAboutItems)
+                    LabeledContent {
+                        TextField("peanuts", text: $model.tuning.allergies)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.never)
+                    } label: {
+                        Label("Allergies", systemImage: "exclamationmark.shield")
+                    }
+                    feature("Money reader", "dollarsign.circle", $model.tuning.moneyReader)
+                    feature("Medication check", "pills", $model.tuning.medicationCheck)
+                    feature("This is my …", "person.crop.square", $model.tuning.myObjects)
+                    feature("Where did I leave …", "clock.arrow.circlepath", $model.tuning.whereDidILeave)
+                    feature("Obstacle warning", "exclamationmark.triangle", $model.tuning.obstacleWarning)
+                    feature("Watch mode", "eye", $model.tuning.watchMode)
+                    feature("Siri shortcuts", "mic.badge.plus", $model.tuning.siriShortcuts)
+                    feature("Español", "globe", $model.tuning.spanish)
+                } header: {
+                    Text("Features")
+                } footer: {
+                    Text("Allergies: comma-separated. A label that mentions one is announced with a warning first.")
+                }
+
+                Section("Judge view") {
+                    feature("Dead-air killer", "bubble.left.and.text.bubble.right", $model.tuning.deadAirKiller)
+                    feature("Animated results + Gemini timing", "sparkles", $model.tuning.judgePolish)
+                    feature("Reach timer", "stopwatch", $model.tuning.reachTimer)
+                    feature("Minimap", "map", $model.tuning.minimap)
+                    feature("Never silent offline", "wifi.exclamationmark", $model.tuning.networkFallback)
+                    feature("Auto flashlight", "flashlight.on.fill", $model.tuning.autoTorch)
+                    feature("Show stats", "gauge.with.dots.needle.33percent", $model.tuning.showStats)
+                }
+
+                Section("Guidance feel") {
+                    TuningSlider(title: "Steadiness at rest", note: "Lower: steadier fingertip, a bit more lag.",
                                  value: $model.tuning.restCutoff, range: 0.3...6)
-                    TuningSlider(title: "Follow when moving", note: "higher = less lag on fast moves",
+                    TuningSlider(title: "Follow when moving", note: "Higher: less lag on fast moves.",
                                  value: $model.tuning.speedResponse, range: 0...40)
-                }
-                Section("Left / right") {
-                    TuningSlider(title: "Full pan at (m)", note: "object this far to the side, in meters",
+                    TuningSlider(title: "Full left/right at (m)", note: "How far to the side the object is for a ping fully in one ear.",
                                  value: $model.tuning.panRange, range: 0.05...0.4)
-                    TuningSlider(title: "Pan curve", note: "< 1 makes small offsets louder on one side",
+                    TuningSlider(title: "Pan curve", note: "Below 1 makes small offsets easier to hear.",
                                  value: $model.tuning.panCurve, range: 0.3...1.5)
-                }
-                Section("Ping pitch (Hz)") {
-                    TuningSlider(title: "Far", note: "pitch when the hand is far away",
-                                 value: $model.tuning.pingLow, range: 200...700)
-                    TuningSlider(title: "Near", note: "pitch right at the object",
-                                 value: $model.tuning.pingHigh, range: 500...1500)
-                }
-                Section("Lock") {
-                    TuningSlider(title: "Margin", note: "grow (or, negative, shrink) the box by this fraction on each side",
+                    TuningSlider(title: "Ping pitch, far (Hz)", note: nil, value: $model.tuning.pingLow, range: 200...700)
+                    TuningSlider(title: "Ping pitch, near (Hz)", note: nil, value: $model.tuning.pingHigh, range: 500...1500)
+                    TuningSlider(title: "Lock margin", note: "Grow (or, negative, shrink) the object's outline for locking.",
                                  value: $model.tuning.lockMargin, range: -0.4...0.6)
-                    TuningSlider(title: "Hold time (s)", note: "fingertip must stay inside this long",
+                    TuningSlider(title: "Hold to lock (s)", note: "How long the finger stays on the object before the chime.",
                                  value: $model.tuning.lockDwell, range: 0.1...1)
                 }
-                Section("Features") {
-                    Toggle("Dead-air killer (chirp, big captions, “Still looking”)", isOn: $model.tuning.deadAirKiller)
-                    Toggle("Network failure path (never silent)", isOn: $model.tuning.networkFallback)
-                    Toggle("Judge view polish", isOn: $model.tuning.judgePolish)
-                    Toggle("Siri shortcuts (“Hey Siri, Reach find”)", isOn: $model.tuning.siriShortcuts)
-                    Toggle("Ask about held items (Gemini)", isOn: $model.tuning.askAboutItems)
-                    Toggle("Money reader", isOn: $model.tuning.moneyReader)
-                    Toggle("Medication check", isOn: $model.tuning.medicationCheck)
-                    Toggle("Watch mode (“tell me if anything changes”)", isOn: $model.tuning.watchMode)
-                    TextField("Allergies, comma-separated", text: $model.tuning.allergies)
-                        .textInputAutocapitalization(.never)
-                    Toggle("Reach timer", isOn: $model.tuning.reachTimer)
-                    Toggle("Minimap", isOn: $model.tuning.minimap)
-                    Toggle("Obstacle warning (after a scan)", isOn: $model.tuning.obstacleWarning)
-                    Toggle("“Where did I leave…?”", isOn: $model.tuning.whereDidILeave)
-                    Toggle("“This is my …” (my objects)", isOn: $model.tuning.myObjects)
-                    Toggle("Auto flashlight", isOn: $model.tuning.autoTorch)
-                    Toggle("Español (Spanish)", isOn: $model.tuning.spanish)
-                }
-                Section("Voice") {
-                    Toggle("Spoken coaching", isOn: $model.tuning.spokenCues)
-                }
+
                 Section("Models") {
-                    Picker("Find (Gemini)", selection: $model.tuning.geminiModel) {
+                    Picker("Find & read (Gemini)", selection: $model.tuning.geminiModel) {
                         ForEach(Gemini.models, id: \.self) { Text($0) }
                     }
-                    Picker("What's this (Claude)", selection: $model.tuning.claudeModel) {
+                    Picker("Reader when questions are off (Claude)", selection: $model.tuning.claudeModel) {
                         ForEach(Reader.models, id: \.self) { Text($0) }
                     }
                 }
+
                 Section {
-                    Button("Reset to defaults") { model.tuning = Tuning() }
+                    Button("Reset to defaults", role: .destructive) { model.tuning = Tuning() }
                 }
             }
-            .navigationTitle("Tuning")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
         .presentationDetents([.medium, .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        .preferredColorScheme(.dark)
+    }
+
+    private func feature(_ title: String, _ icon: String, _ isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Label(title, systemImage: icon)
+        }
+        .tint(Theme.accent)
     }
 }
 
 private struct TuningSlider: View {
     let title: String
-    let note: String
+    let note: String?
     @Binding var value: Double
     let range: ClosedRange<Double>
 
@@ -86,11 +106,15 @@ private struct TuningSlider: View {
                 Spacer()
                 Text(value, format: .number.precision(.fractionLength(2)))
                     .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
             Slider(value: $value, in: range)
-            Text(note)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .tint(Theme.accent)
+            if let note {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

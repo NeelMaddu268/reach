@@ -8,6 +8,7 @@ struct CameraPreview: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ARSCNView {
         let view = ARSCNView()
+        view.backgroundColor = .black  // until the first camera frame
         view.session = session
         view.scene = SCNScene()
         view.automaticallyUpdatesLighting = false
