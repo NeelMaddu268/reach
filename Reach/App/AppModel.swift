@@ -139,6 +139,8 @@ final class AppModel {
         case .ask(let question):
             if tuning.askAboutItems { await ask(question) } else { audio.say("Say find, then an object.") }
         case .scan: await scan()
+        case .remember(let item):
+            if tuning.myObjects { await remember(item) } else { audio.say("Say find, then an object.") }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
                 await whereIs(item)
@@ -249,7 +251,7 @@ final class AppModel {
     }
 
     /// "keys" finds "car keys", "mug" finds "blue mug", "glasses" finds "reading glasses".
-    private static func matches(_ label: String, _ query: String) -> Bool {
+    static func matches(_ label: String, _ query: String) -> Bool {
         let label = label.lowercased(), query = query.lowercased()
         if label.contains(query) || query.contains(label) { return true }
         let head = { (text: String) -> String in
@@ -271,6 +273,27 @@ final class AppModel {
                 let seen = useSightings ? self.sightings.values.filter { Self.matches($0.label, query) }.max { $0.time < $1.time } : nil
                 continuation.resume(returning: seen.map { ($0.label, $0.anchor) })
             }
+        }
+    }
+
+    // MARK: This is my mug
+
+    /// Finds `item` in the frame (the one being held up, nearest the person) and saves it as the reference photo.
+    @MainActor
+    func remember(_ item: String) async {
+        audio.say("Let me see.")
+        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        do {
+            guard let found = try await locator.locate(item, in: snapshot.jpeg, model: tuning.geminiModel),
+                  let crop = FrameEncoder.crop(snapshot.jpeg, to: found.box) else {
+                audio.say("I couldn't see your \(item). Hold it up in front of the camera and try again.")
+                return
+            }
+            try MyObjects.save(crop, as: item)
+            audio.say("Got it. I'll remember your \(item).")
+        } catch {
+            print("Remember: \(error.localizedDescription)")
+            audio.say("I couldn't reach Gemini.")
         }
     }
 
@@ -417,7 +440,10 @@ final class AppModel {
         guard cameraError == nil, let snapshot = await snapshot() else { return nil }
         let start = CACurrentMediaTime()
         defer { locateMs = (CACurrentMediaTime() - start) * 1000 }
-        guard let found = try await locator.locate(query, in: snapshot.jpeg, model: tuning.geminiModel) else { return nil }
+        let reference = tuning.myObjects ? MyObjects.reference(for: query) : nil
+        guard let found = try await locator.locate(query, in: snapshot.jpeg, model: tuning.geminiModel, reference: reference) else {
+            return nil
+        }
         return (found, snapshot.camera)
     }
 
