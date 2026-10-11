@@ -9,6 +9,8 @@ enum Command: Equatable {
     case scan
     /// "Where are my keys?", "where did I leave my wallet?"
     case whereIs(String)
+    /// "This is my mug": remember what the user's own one looks like.
+    case remember(String)
     case stop
 
     /// Parses "find my keys", "where are my glasses", "what's this", "what's on the table", "stop".
@@ -31,6 +33,13 @@ enum Command: Equatable {
                            "what am i holding", "read this", "read it"]
         if readPhrases.contains(where: text.contains) {
             self = .whatsThis
+            return
+        }
+        for trigger in ["this is my", "these are my", "that's my", "that is my"] {
+            guard let range = text.range(of: trigger + " ") else { continue }
+            let object = text[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            guard !object.isEmpty else { return nil }
+            self = .remember(object)
             return
         }
         let triggers = ["find", "look for", "where did i leave", "where did i put", "where's", "where is", "where are"]

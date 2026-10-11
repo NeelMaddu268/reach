@@ -41,6 +41,8 @@ struct Tuning: Equatable, Codable {
     var obstacleWarning = false
     /// "Where are my keys?" answers from where Reach last saw them; off = it starts a find, as before.
     var whereDidILeave = false
+    /// "This is my mug" saves a reference photo; "find my mug" then looks for that one.
+    var myObjects = false
 }
 
 extension Tuning {

@@ -11,10 +11,16 @@ struct ObjectLocator {
 
     var timeout: TimeInterval = 6
 
-    /// Returns nil when Gemini doesn't see the object.
-    func locate(_ query: String, in jpeg: Data, model: String) async throws -> Found? {
-        let text = try await Gemini.generate(prompt: Self.prompt(query), images: [jpeg], schema: Self.schema, model: model,
-                                             timeout: timeout)
+    /// Returns nil when Gemini doesn't see the object. With a `reference` photo of the user's own one
+    /// ("this is my mug"), Gemini looks for that same object rather than any match.
+    func locate(_ query: String, in jpeg: Data, model: String, reference: Data? = nil) async throws -> Found? {
+        var prompt = Self.prompt(query)
+        if reference != nil {
+            prompt = "The first photo shows the person's own \(query). Find that same one, not a similar one, in the second photo.\n"
+                + prompt
+        }
+        let text = try await Gemini.generate(prompt: prompt, images: [reference, jpeg].compactMap { $0 }, schema: Self.schema,
+                                             model: model, timeout: timeout)
         guard let detection = try? JSONDecoder().decode(Detection.self, from: Data(text.utf8)) else { throw Gemini.GeminiError.badReply }
         guard detection.found else { return nil }
         return Self.found(detection.label, detection.box_2d)
