@@ -22,6 +22,19 @@ struct ContentView: View {
             }
             .ignoresSafeArea()
 
+            if let banner = model.reachBanner {
+                Text(banner)
+                    .font(.system(size: 44, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
+                    .background(.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 20))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)  // "Got them" is spoken
+                    .transition(.scale.combined(with: .opacity))
+            }
+
             VStack {
                 StatusHUD(model: model)
                 Spacer()
@@ -61,6 +74,7 @@ struct ContentView: View {
         }
         .background(Color.black)
         .statusBarHidden()
+        .animation(.spring(duration: 0.3), value: model.reachBanner)
         .sheet(isPresented: $showTuning) { TuningSheet(model: model) }
         .task { await model.start() }
     }

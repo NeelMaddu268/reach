@@ -33,6 +33,8 @@ struct Tuning: Equatable, Codable {
     var askAboutItems = true
     /// Comma-separated. A held item whose printed text mentions one is announced with "Careful, the label says …" first.
     var allergies = "peanuts"
+    /// "Reached in 4.8 s" after each lock, and a session tally in the HUD.
+    var reachTimer = true
 }
 
 extension Tuning {

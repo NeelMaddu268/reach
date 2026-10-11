@@ -82,6 +82,11 @@ struct StatusHUD: View {
             let claude = model.readMs.map { String(format: "  read %.1f s", $0 / 1000) } ?? ""
             lines.append("heard “\(model.lastHeard)”\(gemini)\(claude)")
         }
+        if model.tuning.reachTimer, !model.reachTimes.isEmpty {
+            let times = model.reachTimes
+            lines.append(String(format: "reaches %d  avg %.1f s  best %.1f s", times.count,
+                                times.reduce(0, +) / Double(times.count), times.min()!))
+        }
         if let caption = model.caption { lines.append("🔊 \(caption)") }
         return lines.joined(separator: "\n")
     }
