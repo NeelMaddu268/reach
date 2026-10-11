@@ -50,6 +50,9 @@ struct Tuning: Equatable, Codable {
     /// A "working" chirp the moment a command is recognized, big captions of what was heard and said, and
     /// "Still looking." when Gemini takes more than 2.5 s.
     var deadAirKiller = true
+    /// Never go silent on a network problem: Gemini failures say "I can't reach the internet. Tap the object on screen…",
+    /// a missing camera frame is said out loud, and a slow or failing live voice hands over to the iPhone voice at once.
+    var networkFallback = true
 }
 
 extension Tuning {

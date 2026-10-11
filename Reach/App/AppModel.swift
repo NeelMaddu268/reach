@@ -62,6 +62,7 @@ final class AppModel {
             tuning.save()
             if voice.spanish != tuning.spanish { voice.spanish = tuning.spanish }
             audio.spanish = tuning.spanish
+            audio.networkFallback = tuning.networkFallback
         }
     }
 
@@ -117,6 +118,7 @@ final class AppModel {
         }
         voice.spanish = tuning.spanish
         audio.spanish = tuning.spanish
+        audio.networkFallback = tuning.networkFallback
         _ = await voice.requestPermissions()  // ask now, not mid-demo
         audio.say(t(Self.onboarding, "Mantén presionado para hablar, y di encuentra y un objeto."))
     }
@@ -204,7 +206,7 @@ final class AppModel {
         reading = true
         defer { reading = false }
         audio.say(t("Let me see.", "Déjame ver."))
-        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
         let start = CACurrentMediaTime()
         do {
             let answer = try await reader.describe(snapshot.jpeg, model: tuning.claudeModel, spanish: tuning.spanish)
@@ -225,7 +227,7 @@ final class AppModel {
         reading = true
         defer { reading = false }
         audio.say(t("Let me see.", "Déjame ver."))
-        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
         let previous = question == nil ? nil : lastItem.flatMap { CACurrentMediaTime() - $0.time < 120 ? $0 : nil }
         lastItem = nil
         let start = CACurrentMediaTime()
@@ -240,7 +242,7 @@ final class AppModel {
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Ask: \(error.localizedDescription)")
-            audio.say(t("I couldn't read that.", "No pude leer eso."))
+            geminiFailed(t("I couldn't read that.", "No pude leer eso."))
         }
     }
 
@@ -254,7 +256,7 @@ final class AppModel {
         scanning = true
         defer { scanning = false }
         audio.say(t("Looking at the table.", "Mirando la mesa."))
-        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
         let start = CACurrentMediaTime()
         let found: [ObjectLocator.Found]
         do {
@@ -263,7 +265,7 @@ final class AppModel {
         } catch {
             locateMs = (CACurrentMediaTime() - start) * 1000
             print("Scan: \(error.localizedDescription)")
-            audio.say(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
+            geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
             return
         }
         let objects = found.sorted { $0.box.midX < $1.box.midX }
@@ -328,7 +330,7 @@ final class AppModel {
     @MainActor
     func remember(_ item: String) async {
         audio.say(t("Let me see.", "Déjame ver."))
-        guard cameraError == nil, let snapshot = await snapshot() else { return }
+        guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
         do {
             guard let found = try await stillLooking({
                       try await locator.locate(item, in: snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish)
@@ -342,7 +344,7 @@ final class AppModel {
             audio.say(t("Got it. I'll remember your \(item).", "Listo. Recordaré tu \(item)."))
         } catch {
             print("Remember: \(error.localizedDescription)")
-            audio.say(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
+            geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
         }
     }
 
@@ -418,7 +420,7 @@ final class AppModel {
         } catch {
             print("Locate: \(error.localizedDescription)")
             if targetLabel == query { stop() }
-            audio.say(t("I couldn't reach Gemini.", "No pude conectar con Gemini."))
+            if error is CameraNotReady { cameraNotReady() } else { geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini.")) }
             return
         }
         guard targetLabel == query else { return }  // stopped or replaced while we waited
@@ -491,7 +493,10 @@ final class AppModel {
 
     @MainActor
     private func locate(_ query: String) async throws -> (found: ObjectLocator.Found, camera: ARCamera)? {
-        guard cameraError == nil, let snapshot = await snapshot() else { return nil }
+        guard cameraError == nil, let snapshot = await snapshot() else {
+            if tuning.networkFallback { throw CameraNotReady() }
+            return nil
+        }
         let start = CACurrentMediaTime()
         defer { locateMs = (CACurrentMediaTime() - start) * 1000 }
         let reference = tuning.myObjects ? MyObjects.reference(for: query) : nil
@@ -502,14 +507,41 @@ final class AppModel {
         return (found, snapshot.camera)
     }
 
-    /// The next frame as a JPEG, with its camera pose.
+    /// The next frame as a JPEG, with its camera pose. With the network-failure path on, gives up after 1.5 s
+    /// (ARKit paused, say) instead of waiting forever.
     @MainActor
     private func snapshot() async -> Snapshot? {
-        await withCheckedContinuation { continuation in
-            camera.frameQueue.async {
-                self.snapshotRequests.append { continuation.resume(returning: $0) }
+        let limit: TimeInterval? = tuning.networkFallback ? 1.5 : nil
+        return await withCheckedContinuation { continuation in
+            let done = OSAllocatedUnfairLock(initialState: false)
+            let finish: @Sendable (Snapshot?) -> Void = { snapshot in
+                let first = done.withLock { done in
+                    defer { done = true }
+                    return !done
+                }
+                if first { continuation.resume(returning: snapshot) }
             }
+            camera.frameQueue.async { self.snapshotRequests.append(finish) }
+            if let limit { DispatchQueue.main.asyncAfter(deadline: .now() + limit) { finish(nil) } }
         }
+    }
+
+    private struct CameraNotReady: Error {}
+
+    static let offline = "I can't reach the internet. Tap the object on screen and I'll guide you."
+
+    /// A Gemini call failed: with the network-failure path, the offline line and a way forward; otherwise `old`.
+    @MainActor
+    private func geminiFailed(_ old: String) {
+        audio.say(tuning.networkFallback
+                  ? t(Self.offline, "No puedo conectarme a internet. Toca el objeto en la pantalla y te guío.") : old)
+    }
+
+    /// No photo to work with: say so (network-failure path) rather than going quiet.
+    @MainActor
+    private func cameraNotReady() {
+        guard tuning.networkFallback else { return }
+        audio.say(t("The camera isn't ready. Try again.", "La cámara no está lista. Intenta de nuevo."))
     }
 
     // MARK: Frames
