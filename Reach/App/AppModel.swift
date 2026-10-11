@@ -238,7 +238,9 @@ final class AppModel {
             snapshotRequests.forEach { $0(snapshot) }
             snapshotRequests.removeAll()
         }
-        guard time - lastProcessed >= 1.0 / 65 else { return }  // every frame at up to 60 fps
+        // Every frame (up to 60 fps) while guiding; 15 fps otherwise, to keep the phone cool through a long demo.
+        let guiding = guide.state == .guiding || guide.state == .lost
+        guard time - lastProcessed >= (guiding ? 1.0 / 65 : 1.0 / 15) else { return }
         let frameInterval = time - lastProcessed
         lastProcessed = time
 
@@ -288,7 +290,7 @@ final class AppModel {
             self.trackingNote = trackingNote
             if let announcement {
                 self.audio.say(announcement)
-            } else if let cue = output.cue {
+            } else if let cue = output.cue, !self.isListening {  // don't talk over the user
                 self.audio.cue(cue)
             }
             switch output.event {
