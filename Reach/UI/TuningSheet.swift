@@ -36,6 +36,7 @@ struct TuningSheet: View {
                     TextField("Allergies, comma-separated", text: $model.tuning.allergies)
                         .textInputAutocapitalization(.never)
                     Toggle("Reach timer", isOn: $model.tuning.reachTimer)
+                    Toggle("Minimap", isOn: $model.tuning.minimap)
                 }
                 Section("Voice") {
                     Toggle("Speak when needed", isOn: $model.tuning.spokenCues)
