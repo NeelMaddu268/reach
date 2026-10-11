@@ -34,6 +34,7 @@ struct TuningSheet: View {
                 Section("Features") {
                     Toggle("Dead-air killer (chirp, big captions, “Still looking”)", isOn: $model.tuning.deadAirKiller)
                     Toggle("Network failure path (never silent)", isOn: $model.tuning.networkFallback)
+                    Toggle("Judge view polish", isOn: $model.tuning.judgePolish)
                     Toggle("Ask about held items (Gemini)", isOn: $model.tuning.askAboutItems)
                     Toggle("Money reader", isOn: $model.tuning.moneyReader)
                     Toggle("Medication check", isOn: $model.tuning.medicationCheck)

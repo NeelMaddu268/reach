@@ -59,6 +59,8 @@ struct Tuning: Equatable, Codable {
     var medicationCheck = false
     /// "Tell me if anything changes": re-scans every ~3 s and says what appeared, moved or went.
     var watchMode = false
+    /// Judge view: boxes pop in when results arrive, a Gemini latency chip, a one-line status, captions at the bottom.
+    var judgePolish = true
 }
 
 extension Tuning {

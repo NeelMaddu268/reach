@@ -98,6 +98,11 @@ final class AppModel {
     var heardCaption: String?
     /// Bills from the last money read, labeled ("$20", "?") on screen for a few seconds.
     var moneyBoxes: [LabeledBox] = []
+    /// When scan / money boxes and the find target last arrived, so the judge view can animate them in.
+    var boxesShownAt = Date.distantPast
+    var targetShownAt = Date.distantPast
+    /// How long the last Gemini call took, for the judge view's chip.
+    var geminiMs: Double?
     /// Scanned objects as seen in the current frame, for the judge view.
     var sceneBoxes: [LabeledBox] = []
     /// The scanned object the fingertip is on.
@@ -259,6 +264,7 @@ final class AppModel {
                                      allergies: tuning.allergyList, model: tuning.geminiModel, spanish: tuning.spanish)
             }
             readMs = (CACurrentMediaTime() - start) * 1000
+            geminiMs = readMs
             if previous == nil { lastItem = result.item }
             audio.say(result.spoken)
         } catch {
@@ -283,8 +289,10 @@ final class AppModel {
         do {
             let bills = try await stillLooking { try await moneyReader.read(snapshot.jpeg, model: tuning.geminiModel) }
             readMs = (CACurrentMediaTime() - start) * 1000
+            geminiMs = readMs
             let boxes = bills.map { LabeledBox(label: $0.value.map { "$\($0)" } ?? "?", box: $0.box) }
             moneyBoxes = boxes
+            boxesShownAt = Date()
             Task {
                 try? await Task.sleep(for: .seconds(10))
                 if moneyBoxes.map(\.box) == boxes.map(\.box) { moneyBoxes = [] }
@@ -318,6 +326,7 @@ final class AppModel {
                                                 spanish: tuning.spanish)
             }
             readMs = (CACurrentMediaTime() - start) * 1000
+            geminiMs = readMs
             audio.say(answer)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
@@ -479,6 +488,7 @@ final class AppModel {
         do {
             found = try await stillLooking { try await locator.scan(snapshot.jpeg, model: tuning.geminiModel, spanish: tuning.spanish) }
             locateMs = (CACurrentMediaTime() - start) * 1000
+            geminiMs = locateMs
         } catch {
             locateMs = (CACurrentMediaTime() - start) * 1000
             print("Scan: \(error.localizedDescription)")
@@ -494,6 +504,7 @@ final class AppModel {
             self.touching = nil
             self.watchMisses = []
         }
+        boxesShownAt = Date()
         audio.say(Self.summary(objects.map(\.label), spanish: tuning.spanish))
         // So touch-to-explore names and obstacle warnings play instantly.
         audio.prefetch(objects.map { Self.touchName($0.label) } + objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) })
@@ -722,7 +733,10 @@ final class AppModel {
             return nil
         }
         let start = CACurrentMediaTime()
-        defer { locateMs = (CACurrentMediaTime() - start) * 1000 }
+        defer {
+            locateMs = (CACurrentMediaTime() - start) * 1000
+            geminiMs = locateMs
+        }
         let reference = tuning.myObjects ? MyObjects.reference(for: query) : nil
         guard let found = try await locator.locate(query, in: snapshot.jpeg, model: tuning.geminiModel, reference: reference,
                                                    spanish: tuning.spanish) else {
@@ -865,6 +879,7 @@ final class AppModel {
             }
             if let obstacleWarning { self.audio.say(obstacleWarning) }
             if let announcement {
+                self.targetShownAt = Date()
                 self.audio.say(announcement)
             } else if let cue = output.cue, !self.isListening {  // don't talk over the user
                 self.audio.cue(cue)
