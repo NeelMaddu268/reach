@@ -13,10 +13,8 @@ Built at Hacklanta II. The pictures in this README are drawn mockups of the app'
 Always on:
 
 - **Find by voice:** "find my keys" → Gemini finds the keys → ARKit pins them to the table → sonar + spoken nudges → ding, "Got them."
-- **Table scan + touch to explore:** "what's on the table?" names every object left to right and pins each one. Sweeping a hand over the table names the object under the fingertip. "Find" then goes straight to a scanned object.
+- **Table scan:** "what's on the table?" names every object and pins each one. "Find" then goes straight to a scanned object.
 - **Judge view:** the mirrored screen shows the camera, labeled boxes, the fingertip, the guidance line, and captions of everything Reach says.
-
-![Touch to explore: Reach names whatever your finger lands on](docs/images/reach-explore.png)
 
 Switchable in **Tuning (slider button) → Features**, saved across launches:
 
@@ -31,6 +29,7 @@ Switchable in **Tuning (slider button) → Features**, saved across launches:
 | Reach timer | on | "Reached in 4.8 s" after each grab, plus a session tally |
 | Minimap | off | Top-down radar of the table: pinned objects, the hand, rings pulsing with the sonar |
 | Obstacle warning | off | "Careful, mug in the way." when a scanned object sits on the hand's path (needs a scan) |
+| Touch to explore | off | After a scan, the fingertip landing on an object says its name |
 | Where did I leave… | off | "Where are my keys?" answers from where Reach last saw them, then offers to guide |
 | This is my … | off | "This is my mug" saves a reference photo; "find my mug" then looks for that one |
 | Auto flashlight | off | Flashlight on in a dark room, off when it's bright again |
