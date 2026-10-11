@@ -31,8 +31,12 @@ final class CameraService: NSObject, ARSessionDelegate {
         let resolution = configuration.videoFormat.imageResolution  // landscape
         ImageSpace.aspect = resolution.height / resolution.width
         // LiDAR depth: how far the fingertip really is from the object, including its height above it.
+        // Smoothed for still things (table, objects); per-frame for the moving hand.
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
             configuration.frameSemantics.insert(.smoothedSceneDepth)
+        }
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+            configuration.frameSemantics.insert(.sceneDepth)
         }
     }
 

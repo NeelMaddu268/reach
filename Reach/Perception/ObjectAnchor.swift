@@ -20,34 +20,51 @@ struct ObjectAnchor {
                 Double(offsets.map { abs(simd_dot($0, forward)) }.max() ?? 0))
     }
 
-    /// Pins `box` (normalized portrait image coordinates) as seen by `camera`, which may be from an earlier
-    /// frame, e.g. the photo Gemini looked at. Nil if ARKit can't find the table under the box yet.
-    init?(box: CGRect, seenBy camera: ARCamera, session: ARSession) {
-        let size = Self.viewport(camera)
-        let origin = simd_make_float3(camera.transform.columns.3)
-        // The ray through the box center: unproject onto a plane 1 m below the camera to get its direction.
-        let center = CGPoint(x: box.midX * size.width, y: box.midY * size.height)
-        guard let below = camera.unprojectPoint(center, ontoPlane: Self.horizontalPlane(at: origin.y - 1),
-                                                orientation: .portrait, viewportSize: size) else { return nil }
-        let direction = simd_normalize(below - origin)
-
-        var hit: ARRaycastResult?
-        for target in [ARRaycastQuery.Target.estimatedPlane, .existingPlaneInfinite] where hit == nil {
-            let query = ARRaycastQuery(origin: origin, direction: direction, allowing: target, alignment: .horizontal)
-            hit = session.raycast(query).first
+    /// Pins `box` (normalized portrait image coordinates) as seen in `geometry`'s frame, which may be an earlier one,
+    /// e.g. the photo Gemini looked at. The table's height comes from LiDAR just around the box (falling back to an
+    /// ARKit raycast), the object's top from LiDAR at its middle. Nil if neither can place the table yet.
+    init?(box: CGRect, seenIn geometry: FrameGeometry, session: ARSession) {
+        let camera = geometry.camera
+        var table: Float?
+        var top: Float?
+        if geometry.hasDepth {
+            // A ring just outside the box is the table the object stands on; the median shrugs off a neighbor or the edge.
+            let ring = (0..<12).compactMap { step -> Float? in
+                let angle = Double(step) / 12 * 2 * .pi
+                let p = CGPoint(x: box.midX + cos(angle) * box.width * 0.65, y: box.midY + sin(angle) * box.height * 0.65)
+                return geometry.surfacePoint(at: p)?.y
+            }.sorted()
+            if ring.count >= 4 { table = ring[ring.count / 2] }
+            top = geometry.surfacePoint(at: CGPoint(x: box.midX, y: box.midY))?.y
         }
-        guard let hit else { return nil }
+        guard let tableY = table ?? Self.raycastTable(under: box, camera: camera, session: session) else { return nil }
 
-        let table = Self.horizontalPlane(at: hit.worldTransform.columns.3.y)
+        let size = Self.viewport(camera)
+        let plane = Self.horizontalPlane(at: tableY)
         let corners = [CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
                        CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.minX, y: box.maxY)].compactMap {
-            camera.unprojectPoint(CGPoint(x: $0.x * size.width, y: $0.y * size.height), ontoPlane: table,
+            camera.unprojectPoint(CGPoint(x: $0.x * size.width, y: $0.y * size.height), ontoPlane: plane,
                                   orientation: .portrait, viewportSize: size)
         }
         guard corners.count == 4 else { return nil }
         self.corners = corners
-        tableY = hit.worldTransform.columns.3.y
-        topY = tableY + 0.01
+        self.tableY = tableY
+        topY = min(max(top ?? tableY + 0.01, tableY), tableY + 0.4)  // objects on a table: 0–40 cm tall
+    }
+
+    /// Without depth: an ARKit raycast along the line of sight through the box center, from `camera`'s pose.
+    private static func raycastTable(under box: CGRect, camera: ARCamera, session: ARSession) -> Float? {
+        let size = viewport(camera)
+        let origin = simd_make_float3(camera.transform.columns.3)
+        let center = CGPoint(x: box.midX * size.width, y: box.midY * size.height)
+        guard let below = camera.unprojectPoint(center, ontoPlane: horizontalPlane(at: origin.y - 1),
+                                                orientation: .portrait, viewportSize: size) else { return nil }
+        let direction = simd_normalize(below - origin)
+        for target in [ARRaycastQuery.Target.estimatedPlane, .existingPlaneInfinite] {
+            let query = ARRaycastQuery(origin: origin, direction: direction, allowing: target, alignment: .horizontal)
+            if let hit = session.raycast(query).first { return hit.worldTransform.columns.3.y }
+        }
+        return nil
     }
 
     /// The pinned box in the frame `camera` sees (normalized portrait image coordinates), or nil if it's behind the camera.

@@ -7,10 +7,10 @@ import QuartzCore
 /// published state is only written on the main queue.
 @Observable
 final class AppModel {
-    /// A frame for Gemini, with the camera pose it was taken from (to pin what Gemini finds).
+    /// A frame for Gemini, with its camera pose and LiDAR depth (to pin what Gemini finds).
     struct Snapshot {
         var jpeg: Data
-        var camera: ARCamera
+        var geometry: FrameGeometry
     }
 
     let camera = CameraService()
@@ -31,7 +31,10 @@ final class AppModel {
     /// Label to announce ("Found keys, out and to the right.") once the next pin has real positions.
     @ObservationIgnored private var pendingAnnouncement: String?
     @ObservationIgnored private var pendingAnnouncementSince: TimeInterval = 0
-    @ObservationIgnored private var smoothedAbove: Double?
+    /// How far LiDAR puts the finger in front of the object along the line of sight (smoothed), and whether that
+    /// counts as hovering (with hysteresis).
+    @ObservationIgnored private var smoothedGap: Double?
+    @ObservationIgnored private var hovering = false
     /// Focus is locked on the target until guidance ends (see CameraService.lockFocus).
     @ObservationIgnored private var focusLocked = false
     @ObservationIgnored private var lastProcessed: TimeInterval = 0
@@ -407,9 +410,9 @@ final class AppModel {
         let lines: [String] = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
                 let sightings = found.compactMap { object in
-                    ObjectAnchor(box: object.box, seenBy: snapshot.camera, session: self.camera.session).map { (object.label, $0) }
+                    ObjectAnchor(box: object.box, seenIn: snapshot.geometry, session: self.camera.session).map { (object.label, $0) }
                 }
-                continuation.resume(returning: self.applyWatch(sightings, camera: snapshot.camera, learnOnly: learnOnly, spanish: spanish))
+                continuation.resume(returning: self.applyWatch(sightings, camera: snapshot.geometry.camera, learnOnly: learnOnly, spanish: spanish))
             }
         }
         if !lines.isEmpty { audio.say(lines.joined(separator: " ")) }
@@ -517,7 +520,7 @@ final class AppModel {
         let objects = found.sorted { $0.box.midX < $1.box.midX }
         camera.frameQueue.async {
             self.scene = objects.compactMap { object in
-                ObjectAnchor(box: object.box, seenBy: snapshot.camera, session: self.camera.session).map { (object.label, $0) }
+                ObjectAnchor(box: object.box, seenIn: snapshot.geometry, session: self.camera.session).map { (object.label, $0) }
             }
             self.scene.forEach { self.recordSighting($0.label, $0.anchor) }
             self.touching = nil
@@ -666,7 +669,7 @@ final class AppModel {
             self.clearTarget()
             self.guide.beginLocating()
         }
-        let result: (found: ObjectLocator.Found, camera: ARCamera)?
+        let result: (found: ObjectLocator.Found, geometry: FrameGeometry)?
         do {
             result = try await stillLooking { try await locate(query) }
         } catch {
@@ -682,13 +685,13 @@ final class AppModel {
             return
         }
         targetLabel = result.found.label
-        pin(result.found.box, seenBy: result.camera, announcing: result.found.label)
+        pin(result.found.box, seenIn: result.geometry, announcing: result.found.label)
     }
 
     /// Guide the hand to a box tapped or drawn on screen (normalized, origin top-left).
     func seed(_ box: CGRect) {
         targetLabel = nil
-        pin(box, seenBy: nil)
+        pin(box, seenIn: nil)
     }
 
     @MainActor
@@ -702,10 +705,10 @@ final class AppModel {
         }
     }
 
-    /// Pins `box` to the table using the pose of the camera that saw it (nil = the next frame's camera).
-    private func pin(_ box: CGRect, seenBy seen: ARCamera?, announcing label: String? = nil) {
+    /// Pins `box` to the table using the frame that saw it (nil = the next frame).
+    private func pin(_ box: CGRect, seenIn seen: FrameGeometry?, announcing label: String? = nil) {
         camera.frameQueue.async {
-            let pinned = seen.flatMap { ObjectAnchor(box: box, seenBy: $0, session: self.camera.session) }
+            let pinned = seen.flatMap { ObjectAnchor(box: box, seenIn: $0, session: self.camera.session) }
             self.startGuiding(to: pinned, pendingBox: pinned == nil ? box : nil, announcing: label)
         }
     }
@@ -717,7 +720,8 @@ final class AppModel {
         if let pinned, let label { recordSighting(label, pinned) }
         pendingAnnouncement = label
         pendingAnnouncementSince = CACurrentMediaTime()  // same clock as frame timestamps
-        smoothedAbove = nil
+        smoothedGap = nil
+        hovering = false
         focusLocked = false  // refocus on the new target with the next frame
         guidingSince = CACurrentMediaTime()
         obstacleWarned = false
@@ -742,11 +746,11 @@ final class AppModel {
         relocating = true
         defer { relocating = false }
         guard let result = try? await locate(label), targetLabel == label, state == .lost || state == .guiding else { return }
-        pin(result.found.box, seenBy: result.camera)
+        pin(result.found.box, seenIn: result.geometry)
     }
 
     @MainActor
-    private func locate(_ query: String) async throws -> (found: ObjectLocator.Found, camera: ARCamera)? {
+    private func locate(_ query: String) async throws -> (found: ObjectLocator.Found, geometry: FrameGeometry)? {
         guard cameraError == nil, let snapshot = await snapshot() else {
             if tuning.networkFallback { throw CameraNotReady() }
             return nil
@@ -761,7 +765,7 @@ final class AppModel {
                                                    spanish: tuning.spanish) else {
             return nil
         }
-        return (found, snapshot.camera)
+        return (found, snapshot.geometry)
     }
 
     /// The next frame as a JPEG, with its camera pose. With the network-failure path on, gives up after 1.5 s
@@ -806,7 +810,7 @@ final class AppModel {
     private func process(_ frame: ARFrame) {
         let time = frame.timestamp
         if !snapshotRequests.isEmpty {
-            let snapshot = FrameEncoder.jpeg(frame.capturedImage).map { Snapshot(jpeg: $0, camera: frame.camera) }
+            let snapshot = FrameEncoder.jpeg(frame.capturedImage).map { Snapshot(jpeg: $0, geometry: FrameGeometry(frame: frame)) }
             snapshotRequests.forEach { $0(snapshot) }
             snapshotRequests.removeAll()
         }
@@ -826,9 +830,8 @@ final class AppModel {
         let finger = hands.process(frame.capturedImage, time: time)
         let geometry = FrameGeometry(frame: frame)
         lastCamera = frame.camera
-        let fingerPoint = finger.flatMap { geometry.point(at: $0.tip, depthAt: $0.pad) }  // LiDAR, when it has a reading
 
-        if let box = pendingBox, let pinned = ObjectAnchor(box: box, seenBy: frame.camera, session: camera.session) {
+        if let box = pendingBox, let pinned = ObjectAnchor(box: box, seenIn: geometry, session: camera.session) {
             anchor = pinned
             pendingBox = nil
         }
@@ -838,8 +841,7 @@ final class AppModel {
             camera.lockFocus(at: geometry.landscapePoint(CGPoint(x: box.midX, y: box.midY)))
             focusLocked = true
         }
-        let input = guideInput(geometry: geometry, finger: finger, fingerPoint: fingerPoint, box: box,
-                               trackingLost: trackingNote != nil)
+        let input = guideInput(geometry: geometry, finger: finger, box: box, trackingLost: trackingNote != nil)
         let output = guide.update(input, time: time, tuning: tuning)
         audio.setTone(output.tone)
         if output.event == .locked {
@@ -861,7 +863,7 @@ final class AppModel {
         // Touch-to-explore, when not guiding somewhere.
         var touchedName: String?
         if !scene.isEmpty, guide.state == .idle || guide.state == .locked, let finger {
-            touchedName = touchedObject(finger, at: fingerPoint, geometry: geometry, time: time)
+            touchedName = touchedObject(finger, geometry: geometry, time: time)
         } else {
             touching = nil
         }
@@ -871,13 +873,13 @@ final class AppModel {
         let reachTime = output.event == .locked ? time - guidingSince : nil
         var obstacleWarning: String?
         if tuning.obstacleWarning, !scene.isEmpty, !obstacleWarned, guide.state == .guiding, let anchor, let finger,
-           let hand = fingerPoint ?? geometry.point(at: finger.tip, onPlaneAt: anchor.tableY),
+           let hand = geometry.point(at: finger.tip, onPlaneAt: anchor.topY),
            let axes = geometry.axes(onPlaneAt: anchor.tableY),
            let label = obstacle(from: hand, to: anchor, axes: axes) {
             obstacleWarning = Self.obstaclePhrase(label, spanish: tuning.spanish)
             obstacleWarned = true
         }
-        let minimap = tuning.minimap ? makeMinimap(geometry: geometry, finger: finger, fingerPoint: fingerPoint, tone: output.tone) : nil
+        let minimap = tuning.minimap ? makeMinimap(geometry: geometry, finger: finger, tone: output.tone) : nil
 
         let state = guide.state
         let zone = box.map { $0.insetBy(dx: -$0.width * tuning.lockMargin, dy: -$0.height * tuning.lockMargin) }
@@ -942,8 +944,7 @@ final class AppModel {
     }
 
     /// Pinned objects and the hand, top-down in meters from the user's body. Frame queue only.
-    private func makeMinimap(geometry: FrameGeometry, finger: HandTracker.Finger?, fingerPoint: simd_float3?,
-                         tone: AudioGuide.Tone) -> Minimap? {
+    private func makeMinimap(geometry: FrameGeometry, finger: HandTracker.Finger?, tone: AudioGuide.Tone) -> Minimap? {
         guard let tableY = anchor?.tableY ?? scene.first?.anchor.tableY,
               let axes = geometry.axes(onPlaneAt: tableY),
               let body = geometry.point(at: CGPoint(x: 0.5, y: 1), onPlaneAt: tableY) else { return nil }
@@ -954,7 +955,7 @@ final class AppModel {
         if let anchor, guide.state != .idle {
             marks.append(Minimap.Mark(label: "", at: place(anchor.center), isTarget: true))
         }
-        let hand = fingerPoint ?? finger.flatMap { geometry.point(at: $0.tip, onPlaneAt: tableY) }
+        let hand = finger.flatMap { geometry.point(at: $0.tip, onPlaneAt: tableY) }
         return Minimap(marks: marks, hand: hand.map(place), tone: tone)
     }
 
@@ -973,54 +974,57 @@ final class AppModel {
     /// The object relative to the fingertip in real distances: LiDAR depth places the fingertip in 3D
     /// (or, without a depth reading, it's assumed at the object's height). With no hand in view, distances
     /// are from the user's body (the bottom middle of the frame). Frame queue only.
-    private func guideInput(geometry: FrameGeometry, finger: HandTracker.Finger?, fingerPoint: simd_float3?,
-                            box: CGRect?, trackingLost: Bool) -> Guide.Input? {
-        guard var pinned = anchor else { return nil }
-        guard let axes = geometry.axes(onPlaneAt: pinned.tableY) else { return nil }
+    private func guideInput(geometry: FrameGeometry, finger: HandTracker.Finger?, box: CGRect?,
+                            trackingLost: Bool) -> Guide.Input? {
+        guard var pinned = anchor, let axes = geometry.axes(onPlaneAt: pinned.tableY) else { return nil }
 
-        // Learn the object's height from depth at its center, while the hand is nowhere near it.
+        // Refine the object's height from LiDAR at its middle while the hand is nowhere near it.
         if let box, finger.map({ !box.insetBy(dx: -box.width, dy: -box.height).contains($0.tip) }) ?? true,
-           let top = geometry.point(at: CGPoint(x: box.midX, y: box.midY), percentile: 0.3) {
-            pinned.topY = max(pinned.tableY, pinned.topY + (top.y - pinned.topY) * 0.2)
+           let top = geometry.surfacePoint(at: CGPoint(x: box.midX, y: box.midY)) {
+            pinned.topY = min(max(pinned.topY + (top.y - pinned.topY) * 0.2, pinned.tableY), pinned.tableY + 0.4)
             anchor = pinned
         }
 
-        var hand: simd_float3?
-        var above: Double?
-        if let finger {
-            if let point = fingerPoint {
-                hand = point
-                let reading = Double(point.y - pinned.topY)
-                above = smoothedAbove.map { $0 + (reading - $0) * 0.5 } ?? reading
-            } else {
-                hand = geometry.point(at: finger.tip, onPlaneAt: pinned.topY)
-            }
-        }
-        smoothedAbove = above
+        // The hand: where the fingertip's line of sight meets the object's height. Steady, unlike finger depth.
+        let hand = finger.flatMap { geometry.point(at: $0.tip, onPlaneAt: pinned.topY) }
+        let hoveringNow = finger.flatMap { isHovering(over: pinned.topY, finger: $0, geometry: geometry) }
         guard let from = hand ?? geometry.point(at: CGPoint(x: 0.5, y: 1), onPlaneAt: pinned.tableY) else { return nil }
 
         let toObject = pinned.center - from
         let half = pinned.halfExtents(right: axes.right, forward: axes.forward)
         return Guide.Input(right: Double(simd_dot(toObject, axes.right)), forward: Double(simd_dot(toObject, axes.forward)),
-                           above: above, halfRight: half.right, halfForward: half.forward,
+                           hovering: hoveringNow, halfRight: half.right, halfForward: half.forward,
                            hasHand: finger != nil, trackingLost: trackingLost)
+    }
+
+    /// Whether LiDAR clearly puts the finger in front of a surface at height `topY` along its line of sight, i.e.
+    /// hovering above it rather than touching: in at 6 cm, out at 4 cm. Nil when the finger's depth isn't trustworthy.
+    /// Frame queue only.
+    private func isHovering(over topY: Float, finger: HandTracker.Finger, geometry: FrameGeometry) -> Bool? {
+        guard let fingerDepth = geometry.fingerDepth(tip: finger.tip, pad: finger.pad),
+              let surfaceDepth = geometry.depthOnPlane(at: finger.tip, y: topY) else { return nil }
+        let gap = Double(surfaceDepth - fingerDepth)
+        let smoothed = smoothedGap.map { $0 + (gap - $0) * 0.4 } ?? gap
+        smoothedGap = smoothed
+        hovering = hovering ? smoothed > 0.04 : smoothed > 0.06
+        return hovering
     }
 
     /// The name of the scanned object the fingertip just landed on, once per arrival. With LiDAR, "on" means
     /// within the object's footprint and touching its top; without, inside its box on screen. Frame queue only.
-    private func touchedObject(_ finger: HandTracker.Finger, at point: simd_float3?, geometry: FrameGeometry,
-                               time: TimeInterval) -> String? {
+    private func touchedObject(_ finger: HandTracker.Finger, geometry: FrameGeometry, time: TimeInterval) -> String? {
         var hit: Int?
-        if let point, let axes = geometry.axes(onPlaneAt: scene[0].anchor.tableY) {
+        if let axes = geometry.axes(onPlaneAt: scene[0].anchor.tableY) {
             var nearest = Float.infinity
             for (index, object) in scene.enumerated() {
+                // The fingertip's line of sight at this object's height, inside its footprint, and not clearly hovering.
+                guard let point = geometry.point(at: finger.tip, onPlaneAt: object.anchor.topY) else { continue }
                 let offset = object.anchor.center - point
                 let half = object.anchor.halfExtents(right: axes.right, forward: axes.forward)
                 let on = abs(Double(simd_dot(offset, axes.right))) <= half.right + 0.01
                     && abs(Double(simd_dot(offset, axes.forward))) <= half.forward + 0.01
-                    && point.y - object.anchor.topY < 0.05
                 let distance = simd_length(simd_float2(offset.x, offset.z))
-                if on, distance < nearest {
+                if on, distance < nearest, isHovering(over: object.anchor.topY, finger: finger, geometry: geometry) != true {
                     hit = index
                     nearest = distance
                 }
