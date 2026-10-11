@@ -48,6 +48,9 @@ final class Guide {
     static let cueEvery: TimeInterval = 1.5
     /// Within this distance of the object (meters), directions get "A little …".
     static let littleWithin = 0.08
+    /// Careful guidance without LiDAR confirmation: how long after "Down." a still finger on the object locks
+    /// (the clip, a reaction, and a lowering hand's descent fit inside it).
+    static let waitAfterDown: TimeInterval = 1.8
 
     private(set) var state = State.idle
     private var insideSince: TimeInterval?
@@ -82,6 +85,17 @@ final class Guide {
     /// Waiting for Gemini to find the object.
     func beginLocating() {
         state = .locating
+    }
+
+    /// The last "Down." wasn't said (the user was talking, or an announcement took its place): say it again next frame,
+    /// and don't start the wait after it until it is.
+    func forgetDown() {
+        downAt = nil
+        lastCue = nil
+    }
+
+    static func isDown(_ cue: String) -> Bool {
+        cue == down + "." || cue == downES + "."
     }
 
     func stop() {
@@ -123,9 +137,12 @@ final class Guide {
             // On it: Vision saw the hand in the last 0.3 s, it's inside the zone (1 cm slack once a dwell is under way, so
             // the tip flickering over the edge doesn't restart it), LiDAR doesn't say it's hovering, and ARKit is steady.
             let slack = insideSince == nil ? 0 : 0.01
-            let onIt = input.hasHand && input.handAge <= 0.3 && input.hovering != true && !input.poseShaky
+            let onIt = input.hasHand && input.handAge <= 0.6 && input.hovering != true && !input.poseShaky
                 && abs(input.right) <= zoneRight + slack && abs(input.forward) <= zoneForward + slack
             let moved = dwellFrom.map { hypot(input.right - $0.right, input.forward - $0.forward) > 0.04 } ?? true
+            // "Down." counts once per arrival: a re-tap or a lowering hand restarts the dwell but not the wait after it.
+            let near = abs(input.right) <= zoneRight + 0.1 && abs(input.forward) <= zoneForward + 0.1
+            if !input.hasHand || !near { downAt = nil }
             if !onIt {
                 insideSince = nil
             } else if insideSince == nil || moved {  // start over wherever it settles: a sweep or a jump never locks
@@ -133,7 +150,6 @@ final class Guide {
                 dwellFrom = (input.right, input.forward)
                 readings = 0
                 touches = 0
-                downAt = nil
             }
             if let since = insideSince {
                 if input.hovering != nil { readings += 1 }
@@ -141,10 +157,11 @@ final class Guide {
                 // LiDAR mostly reads the fingertip right at the object's top (a low hover reads that only now and then).
                 let confirmed = touches >= 3 && touches * 2 >= readings
                 // Without that, "Down." is said at 0.6 s; a hovering hand moves when it hears it, a touching one stays.
-                let waited = tuning.spokenCues ? downAt.map { time - $0 >= 1.2 } == true : time - since >= tuning.lockDwell * 4
-                // Still 0.6 s with LiDAR confirming (at the default 0.4 s hold), or still 1.2 s after "Down." without;
-                // only on a frame where Vision saw the hand.
-                if input.handAge == 0, time - since >= tuning.lockDwell * 1.5, confirmed || waited {
+                let waited = tuning.spokenCues ? downAt.map { time - $0 >= Self.waitAfterDown } == true
+                                               : time - since >= tuning.lockDwell * 4
+                // Still 0.6 s with LiDAR confirming (at the default 0.4 s hold), or still 1.8 s after "Down." without;
+                // only on a frame where Vision saw the hand, inside the zone itself (the slack only keeps the dwell).
+                if input.handAge == 0, over, time - since >= tuning.lockDwell * 1.5, confirmed || waited {
                     lockNote = String(format: "%@ %.1f s", confirmed ? "lidar" : "no lidar", time - since)
                     state = .locked
                     output.event = .locked
@@ -195,7 +212,9 @@ final class Guide {
         } else {
             handMissingSince = nil
             if over {
-                guard hovering || unconfirmed else { return nil }  // on it: the lock takes over
+                // On it: the lock takes over. Without LiDAR, "Down." once per arrival (a hovering hand needs it once;
+                // repeating it makes a touching finger lift and tap again).
+                guard hovering || (unconfirmed && downAt == nil) else { return nil }
                 text = (spanish ? Self.downES : Self.down) + "."
             } else {
                 let way = (spanish ? Self.directionsES : Self.directions)[steadySector(input)]

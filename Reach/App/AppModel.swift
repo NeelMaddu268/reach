@@ -375,7 +375,6 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self, !Task.isCancelled else { return }
                 guard state == .guiding || state == .lost, let label = targetLabel, !isListening, !reading, !scanning else { continue }
-                if tuning.carefulGuidance, fingertip != nil || trackingNote != nil { continue }  // never mid-reach or from a shaky pose
                 if let tip = fingertip, let box = targetBox,
                    box.insetBy(dx: -box.width * 0.5, dy: -box.height * 0.5).contains(tip) { continue }
                 await followOnce(label, hint: targetBox)
@@ -398,17 +397,17 @@ final class AppModel {
                 }
                 let shift = simd_distance(simd_float2(pinned.center.x, pinned.center.z), simd_float2(current.center.x, current.center.z))
                 if careful {
-                    // A move must show up in two looks in a row (one can be a fluke), with no hand seen for 1 s.
+                    // A move must show up in two looks in a row (one can be a fluke: a hand half over it, a lookalike).
                     let agrees = self.followCandidate.map {
                         simd_distance(simd_float2($0.center.x, $0.center.z), simd_float2(pinned.center.x, pinned.center.z)) < 0.04
                     } ?? false
                     self.followCandidate = shift > 0.05 && !agrees ? pinned : nil
-                    guard agrees, CACurrentMediaTime() - self.hands.lastSeen > 1 else { return continuation.resume(returning: 0) }
-                    self.smoothedGap = nil
+                    guard agrees else { return continuation.resume(returning: 0) }
                 }
                 if shift > 0.05 {
                     self.anchor = pinned
                     self.recordSighting(label, pinned)
+                    if careful { self.smoothedGap = nil }  // a new top height
                 }
                 continuation.resume(returning: shift)
             }
@@ -1005,7 +1004,12 @@ final class AppModel {
                 self.targetShownAt = Date()
                 self.audio.say(announcement)
             } else if let cue = output.cue, !self.isListening {  // don't talk over the user
-                self.audio.cue(cue)
+                // Careful: "Down." cuts in (the hand is already over the object, so a direction still playing is stale),
+                // so the lock's wait after it starts from a "Down." that was really said.
+                if tuning.carefulGuidance, Guide.isDown(cue) { self.audio.say(cue) } else { self.audio.cue(cue) }
+            }
+            if tuning.carefulGuidance, let cue = output.cue, Guide.isDown(cue), announcement != nil || self.isListening {
+                self.camera.frameQueue.async { self.guide.forgetDown() }  // not said: say it again
             }
             switch output.event {
             case .locked:
@@ -1086,7 +1090,7 @@ final class AppModel {
            let top = geometry.surfacePoint(at: CGPoint(x: box.midX, y: box.midY)) {
             pinned.topY = min(max(pinned.topY + (top.y - pinned.topY) * 0.2, pinned.tableY), pinned.tableY + 0.4)
             // Careful: whatever is over the object (an arm, a hand Vision missed, a judge) reads higher, never lower.
-            if careful, let measured = pinned.measuredTopY { pinned.topY = min(pinned.topY, measured + 0.02) }
+            if careful, let measured = pinned.measuredTopY { pinned.topY = min(pinned.topY, measured + 0.005) }
             anchor = pinned
         }
 
@@ -1123,7 +1127,11 @@ final class AppModel {
         let smoothed = smoothedGap.map { $0 + (gap - $0) * 0.4 } ?? gap
         smoothedGap = smoothed
         hovering = hovering ? smoothed > 0.04 : smoothed > 0.06
-        touchNow = !hovering && (-0.03...0.05).contains(gap)  // the finger right at the object's top (careful guidance)
+        // Careful guidance: the finger right at the object's top (its back ~1.5-2.5 cm up). In height, not depth along
+        // the camera axis, which stretches with the viewing angle: along one line of sight, height = gap * (camera
+        // height above the top) / depth.
+        let height = gap * Double(geometry.camera.transform.columns.3.y - topY) / Double(surfaceDepth)
+        touchNow = !hovering && (-0.02...0.035).contains(height)
         return hovering
     }
 
