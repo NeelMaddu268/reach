@@ -20,6 +20,7 @@ Switchable in **Tuning (slider button) → Features**, saved across launches:
 | --- | --- | --- |
 | Dead-air killer | on | A chirp the moment a command is heard, big captions of what you said and what Reach said, "Still looking." when Gemini is slow |
 | Network failure path | on | Never silent: "I can't reach the internet. Tap the object on screen and I'll guide you."; the iPhone voice takes over instantly if the live voice is slow |
+| Siri shortcuts | on | "Hey Siri, Reach find" → "What should I find?" → "my keys" → Reach opens and guides; "Hey Siri, what's on the table in Reach" → opens and scans. Off = Siri just opens the app |
 | Judge view polish | on | Boxes pop in as results arrive, a Gemini latency chip, one-line status, captions at the bottom |
 | Ask about held items | on | "what's this?" and questions about the held item ("is this decaf?", "how many do I take?"), answered by Gemini only from what's printed. One follow-up. Off: "what's this?" uses the Claude reader. |
 | Allergies | "peanuts" | If the label's printed text mentions one, the answer starts with "Careful, the label says it contains peanuts." |
