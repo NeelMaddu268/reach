@@ -70,6 +70,10 @@ struct Tuning: Equatable, Codable {
     var followMovedObjects = true
     /// After a table scan, the fingertip landing on a scanned object says its name.
     var touchToExplore = false
+    /// Careful guidance: a lock needs a hand Vision sees now, held still, with LiDAR touch readings (or longer without);
+    /// no directions from a held or just-found hand; the object's height can't creep up; follow never re-pins mid-reach.
+    /// Off = guidance exactly as before.
+    var carefulGuidance = true
 }
 
 extension Tuning {

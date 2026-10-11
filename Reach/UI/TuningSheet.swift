@@ -10,6 +10,7 @@ struct TuningSheet: View {
             Form {
                 Section {
                     feature("Spoken coaching", "figure.walk.motion", $model.tuning.spokenCues)
+                    feature("Careful guidance", "hand.raised", $model.tuning.carefulGuidance)
                     feature("Ask about held items", "text.viewfinder", $model.tuning.askAboutItems)
                     LabeledContent {
                         TextField("peanuts", text: $model.tuning.allergies)
