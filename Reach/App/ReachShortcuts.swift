@@ -19,7 +19,7 @@ struct FindIntent: AppIntent {
 /// "Hey Siri, what's on the table in Reach" → Reach opens and scans the table.
 struct ScanIntent: AppIntent {
     static let title: LocalizedStringResource = "What's on the table"
-    static let description = IntentDescription("Opens Reach and names everything on the table, left to right.")
+    static let description = IntentDescription("Opens Reach and names everything on the table.")
     static let openAppWhenRun = true
 
     @MainActor

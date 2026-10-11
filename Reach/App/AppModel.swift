@@ -540,7 +540,7 @@ final class AppModel {
 
     // MARK: What's on the table?
 
-    /// Gemini lists every object on the table; each is pinned in 3D and named left to right. Afterwards,
+    /// Gemini lists every object on the table; each is pinned in 3D and named. Afterwards,
     /// touching an object names it, and "find" goes straight to a scanned object without asking Gemini again.
     @MainActor
     func scan() async {
@@ -576,15 +576,15 @@ final class AppModel {
         audio.prefetch(objects.map { Self.touchName($0.label) } + objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) })
     }
 
-    /// "I see 4 things, left to right: keys, blue mug, phone and pill bottle."
+    /// "I see 4 things: keys, blue mug, phone and pill bottle."
     private static func summary(_ labels: [String], spanish: Bool) -> String {
         switch labels.count {
         case 0: return spanish ? "No veo nada en la mesa." : "I don't see anything on the table."
         case 1: return spanish ? "Veo \(labels[0])." : "I see \(labels[0])."
         default:
             let list = labels.dropLast().joined(separator: ", ")
-            return spanish ? "Veo \(labels.count) cosas, de izquierda a derecha: \(list) y \(labels.last!)."
-                           : "I see \(labels.count) things, left to right: \(list) and \(labels.last!)."
+            return spanish ? "Veo \(labels.count) cosas: \(list) y \(labels.last!)."
+                           : "I see \(labels.count) things: \(list) and \(labels.last!)."
         }
     }
 
