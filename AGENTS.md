@@ -22,7 +22,8 @@ Demo setup: a blindfolded teammate wears the phone on a chest mount aimed down a
 - `Audio/AudioGuide`: AVAudioEngine sonar + lock ding; voice = bundled ElevenLabs clip (`Audio/Clips/<slug>.mp3`) → live ElevenLabs (`eleven_v4_turbo`, voice Sarah; cached on disk) → best installed iPhone voice. The sonar ducks while speaking. Regenerate clips with `scripts/make_clips.py` after changing phrases, voice or model.
 - `Voice/Commands`: push-to-talk, on-device `SFSpeechRecognizer`, parses "find (my) X", "what's this/that", "stop". Hold anywhere (`TouchSurface`) or the big `TalkButton`.
 - `Reader/Reader`: "what's this?": `VNRecognizeTextRequest` on the frame + Claude (Messages API over raw HTTP; Opus 5.5 at low effort by default, picker in tuning; `fallbacks: "default"` for refusals) → one spoken sentence. Needs `ANTHROPIC_WORKSPACE_ID` when the key isn't workspace-scoped.
-- `UI/`: `ContentView` (+ `TouchSurface`: hold to talk, tap or drag to seed; `TalkButton`), `DebugOverlay` (judge view), `StatusHUD`, `TuningSheet`.
+- `UI/`: `ContentView` (+ `TouchSurface`: hold to talk, tap or drag to seed; `TalkButton`; idle hint), `DebugOverlay` (judge view: box, lock zone, guidance line, fingertip; HUD with state, timings and a caption of what Reach just said), `TuningSheet`.
+- `Assets.xcassets/AppIcon`: drawn by `scripts/make_icon.swift`.
 
 ## Conventions
 

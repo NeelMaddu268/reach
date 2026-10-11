@@ -16,7 +16,8 @@ enum Command: Equatable {
             self = .stop
             return
         }
-        let readPhrases = ["what's this", "what is this", "what's that", "what is that", "what am i holding", "read this"]
+        let readPhrases = ["what's this", "what is this", "what's that", "what is that", "what is it", "what's in my hand",
+                           "what am i holding", "read this", "read it"]
         if readPhrases.contains(where: text.contains) {
             self = .whatsThis
             return

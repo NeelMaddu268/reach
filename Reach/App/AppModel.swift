@@ -28,6 +28,7 @@ final class AppModel {
     @ObservationIgnored private var snapshotRequests: [(Snapshot?) -> Void] = []
     /// Label to announce ("Found keys. 14 inches ahead…") once the next pin has real distances.
     @ObservationIgnored private var pendingAnnouncement: String?
+    @ObservationIgnored private var pendingAnnouncementSince: TimeInterval = 0
     @ObservationIgnored private var smoothedAbove: Double?
     /// Focus is locked on the target until guidance ends (see CameraService.lockFocus).
     @ObservationIgnored private var focusLocked = false
@@ -78,7 +79,10 @@ final class AppModel {
             cameraError = error.localizedDescription
         }
         _ = await voice.requestPermissions()  // ask now, not mid-demo
+        audio.say(Self.onboarding)
     }
+
+    static let onboarding = "Hold to talk, then say find and an object."
 
     // MARK: Voice
 
@@ -178,6 +182,7 @@ final class AppModel {
             self.anchor = seen.flatMap { ObjectAnchor(box: box, seenBy: $0, session: self.camera.session) }
             self.pendingBox = self.anchor == nil ? box : nil
             self.pendingAnnouncement = label
+            self.pendingAnnouncementSince = CACurrentMediaTime()  // same clock as frame timestamps
             self.smoothedAbove = nil
             self.focusLocked = false  // refocus on the new target with the next frame
             self.guide.start()
@@ -261,9 +266,14 @@ final class AppModel {
             focusLocked = false
         }
         var announcement: String?
-        if let label = pendingAnnouncement, let input {
-            announcement = Guide.announcement(label, input)
-            pendingAnnouncement = nil
+        if let label = pendingAnnouncement {
+            if let input {
+                announcement = Guide.announcement(label, input)
+                pendingAnnouncement = nil
+            } else if time - pendingAnnouncementSince > 1.5 {  // ARKit hasn't pinned it yet: don't stay silent
+                announcement = "Found \(label)."
+                pendingAnnouncement = nil
+            }
         }
 
         let state = guide.state
