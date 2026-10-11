@@ -103,7 +103,7 @@ open Reach.xcodeproj
 
 ## Disclosures
 
-- **AI coding tools:** Claude Code (Claude Opus 5.5) wrote most of the code, with the team testing on device and directing the design.
+- **AI coding assistant:** built with help from Claude Code.
 - **AI at runtime:** object finding, table scans and answers come from Google Gemini (and Anthropic Claude for the optional reader); the voice is ElevenLabs. These can be wrong.
 - **What leaves the phone:**
   - **Gemini:** camera frames (JPEG), and reference photos when you use "this is my …".
