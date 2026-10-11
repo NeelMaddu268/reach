@@ -88,7 +88,7 @@ struct StatusHUD: View {
             lines.append(String(format: "reaches %d  avg %.1f s  best %.1f s", times.count,
                                 times.reduce(0, +) / Double(times.count), times.min()!))
         }
-        if let caption = model.caption { lines.append("🔊 \(caption)") }
+        if !model.tuning.deadAirKiller, let caption = model.caption { lines.append("🔊 \(caption)") }  // else: big captions
         return lines.joined(separator: "\n")
     }
 }
