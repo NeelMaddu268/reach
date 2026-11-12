@@ -1174,13 +1174,17 @@ final class AppModel {
         let path = end - start
         let length = simd_length(path)
         guard length > 0.05 else { return nil }
+        let targetHalf = target.halfExtents(right: axes.right, forward: axes.forward)
         var first: (along: Float, label: String)?
         for object in scene {
             let center = simd_float2(object.anchor.center.x, object.anchor.center.z)
-            guard simd_distance(center, end) > 0.03 else { continue }  // the target itself
+            let half = object.anchor.halfExtents(right: axes.right, forward: axes.forward)
+            // The target itself, or another pin of it (the scan's vs. Gemini's, or from before a re-pin): two separate
+            // objects can't stand closer than their half-widths added up. The smaller ones: a tall box casts long.
+            let same = max(0.03, Float(min(targetHalf.right, targetHalf.forward) + min(half.right, half.forward)))
+            guard simd_distance(center, end) > same else { continue }
             let along = simd_dot(center - start, path) / (length * length)
             guard along > 0.05, along < 0.95 else { continue }  // between the hand and the target
-            let half = object.anchor.halfExtents(right: axes.right, forward: axes.forward)
             let gap = simd_distance(center, start + along * path) - Float(half.right + half.forward) / 2
             if gap < 0.06, along < (first?.along ?? .infinity) { first = (along, object.label) }
         }
@@ -1200,10 +1204,12 @@ final class AppModel {
             CGPoint(x: CGFloat(simd_dot(p - body, axes.right)), y: CGFloat(simd_dot(p - body, axes.forward)))
         }
         var marks = scene.map { Minimap.Mark(label: $0.label, at: place($0.anchor.center), isTarget: false) }
+        var handY = tableY
         if let anchor, guide.state != .idle {
             marks.append(Minimap.Mark(label: "", at: place(anchor.center), isTarget: true))
+            handY = anchor.topY  // where the guide casts the fingertip
         }
-        let hand = finger.flatMap { geometry.point(at: $0.tip, onPlaneAt: tableY) }
+        let hand = finger.flatMap { geometry.point(at: $0.tip, onPlaneAt: handY) }
         return Minimap(marks: marks, hand: hand.map(place), tone: tone)
     }
 
