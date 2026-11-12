@@ -144,7 +144,7 @@ struct ControlBar: View {
 
     var body: some View {
         HStack {
-            CircleButton(systemImage: "stop.fill", tint: Theme.danger, enabled: model.state != .idle) { model.stop() }
+            CircleButton(systemImage: "stop.fill", tint: Theme.danger, enabled: model.state != .idle || model.watching) { model.stop() }
                 .accessibilityLabel("Stop")
             Spacer()
             MicButton(model: model)

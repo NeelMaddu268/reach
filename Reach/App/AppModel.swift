@@ -100,6 +100,8 @@ final class AppModel {
     var isListening = false {
         didSet { if oldValue, !isListening { listenEndedAt = CACurrentMediaTime() } }
     }
+    /// Watch mode is running (state stays idle meanwhile, so Stop checks this too).
+    var watching = false
     var lastHeard = ""
     var fps = 0.0
     /// Capture → guidance done, for the latest frame.
@@ -384,6 +386,7 @@ final class AppModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self, !Task.isCancelled else { return }
+                guard tuning.followMovedObjects else { return }  // switched off mid-reach
                 guard state == .guiding || state == .lost, let label = targetLabel, !isListening, !reading, !scanning else { continue }
                 if let tip = fingertip, let box = targetBox,
                    box.insetBy(dx: -box.width * 0.5, dy: -box.height * 0.5).contains(tip) { continue }
@@ -398,7 +401,7 @@ final class AppModel {
               let found = try? await locator.locate(label, in: snapshot.jpeg, model: Self.watchModel,
                                                     reference: tuning.myObjects ? MyObjects.reference(for: label) : nil,
                                                     near: hint, spanish: tuning.spanish, retry: false),
-              targetLabel == label, state == .guiding || state == .lost, !Task.isCancelled else { return }
+              targetLabel == label, state == .guiding || state == .lost, tuning.followMovedObjects, !Task.isCancelled else { return }
         let careful = tuning.carefulGuidance
         let shift: Float = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
@@ -447,12 +450,14 @@ final class AppModel {
         watchTask?.cancel()
         watchFailures = 0
         audio.say(t("Watching the table. I'll tell you if anything changes.", "Vigilando la mesa. Te aviso si algo cambia."))
+        watching = true
         watchTask = Task { @MainActor [weak self] in
             var firstLook = true
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard let self, !Task.isCancelled else { return }
                 if watchPaused { continue }
+                guard tuning.watchMode else { return stopWatching(saying: true) }  // switched off in Settings
                 // No scan yet: the first look that gets used just learns the table.
                 if await watchOnce(learnOnly: firstLook && sceneBoxes.isEmpty) { firstLook = false }
             }
@@ -464,6 +469,7 @@ final class AppModel {
         guard let watchTask else { return }
         watchTask.cancel()
         self.watchTask = nil
+        watching = false
         if saying { audio.say(t("Stopped watching.", "Dejé de vigilar.")) }
     }
 
@@ -488,7 +494,7 @@ final class AppModel {
             }
             return false
         }
-        guard watchTask != nil, !Task.isCancelled, !watchPaused else { return false }  // busy now: look again next time
+        guard watchTask != nil, tuning.watchMode, !Task.isCancelled, !watchPaused else { return false }  // busy or switched off now
         let lines: [String] = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
                 let sightings = found.compactMap { object in
