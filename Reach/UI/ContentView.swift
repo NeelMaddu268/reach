@@ -7,6 +7,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 10) {
             TopBar(model: model)
+                .allowsHitTesting(false)  // a hold here reaches the background's hold-to-talk
             GeometryReader { geo in
                 let imageRect = ImageSpace.fitRect(in: geo.size)
                 ZStack {
@@ -49,12 +50,25 @@ struct ContentView: View {
             Text(model.state == .idle && !model.isListening ? "Hold anywhere to talk" : " ")
                 .font(Theme.rounded(14, .medium))
                 .foregroundStyle(.white.opacity(0.5))
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)  // the mic button's hint says the same
             ControlBar(model: model, showSettings: $showSettings)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
-        .background(Theme.background.ignoresSafeArea())
+        .background {
+            Theme.background
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 200, pressing: { pressing in
+                    if pressing {
+                        model.beginListening()
+                    } else {
+                        Task { await model.endListening() }
+                    }
+                }, perform: {})  // same hold-to-talk as MicButton, for the screen around the card and controls
+                .accessibilityHidden(true)
+        }
         .preferredColorScheme(.dark)
         .statusBarHidden()
         .animation(.spring(duration: 0.3), value: model.reachBanner)
@@ -203,16 +217,22 @@ struct MicButton: View {
         .contentShape(Circle())
         .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 200, pressing: { pressing in
             if pressing {
-                Haptics.tap()
                 model.beginListening()
             } else {
                 Task { await model.endListening() }
             }
         }, perform: {})
         .accessibilityElement()
-        .accessibilityLabel("Hold to talk")
-        .accessibilityHint("Then say find and an object, what's on the table, or what's this.")
+        .accessibilityLabel("Hold to talk")  // never changes: VoiceOver would speak a new label into the open mic
+        .accessibilityHint("Or double-tap to start and double-tap again when done. Then say find and an object, what's on the table, or what's this.")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction {  // VoiceOver double-tap toggles; double-tap-and-hold still reaches the long press
+            if model.isListening {
+                Task { await model.endListening() }
+            } else {
+                model.beginListening()
+            }
+        }
     }
 }
 
@@ -250,7 +270,7 @@ struct NoticePill: View {
     }
 }
 
-/// The whole screen: hold anywhere to talk, tap an object to target it, or drag to draw a box around it.
+/// The camera card: hold to talk, tap an object to target it, or drag to draw a box around it.
 struct TouchSurface: View {
     let imageRect: CGRect
     let onPick: (CGRect) -> Void
@@ -265,11 +285,13 @@ struct TouchSurface: View {
     @State private var pressID = 0
     @State private var moved = false
     @State private var holding = false
+    @GestureState private var touching = false  // reset by SwiftUI on end and on cancel
 
     var body: some View {
         Color.clear
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
+                .updating($touching) { _, touching, _ in touching = true }
                 .onChanged { drag in
                     if !pressed {
                         pressed = true
@@ -278,7 +300,6 @@ struct TouchSurface: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + Self.holdDelay) {
                             guard pressed, pressID == id, !moved else { return }
                             holding = true
-                            Haptics.tap()
                             onHoldStart()
                         }
                     }
@@ -296,6 +317,15 @@ struct TouchSurface: View {
                         pick(drag)
                     }
                 })
+            .onChange(of: touching) {
+                DispatchQueue.main.async {  // after onEnded whatever the order, so a release never runs both this and pick()
+                    guard !touching, pressed else { return }  // cancelled (call, Siri, app switch): onEnded never ran
+                    if holding { onHoldEnd() }
+                    pressed = false
+                    moved = false
+                    holding = false
+                }
+            }
             .accessibilityHidden(true)
     }
 

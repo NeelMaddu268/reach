@@ -227,6 +227,7 @@ final class AppModel {
     @MainActor
     func beginListening() {
         guard !isListening else { return }
+        Haptics.tap()  // only when listening really starts: a press while the last one is still finishing records nothing
         isListening = true
         audio.setMuted(true)
         voice.start()
