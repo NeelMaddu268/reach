@@ -53,6 +53,8 @@ final class AppModel {
     @ObservationIgnored private var obstacleWarned = false
     /// The "can't place it yet" line was said for this target.
     @ObservationIgnored private var pendingHintSaid = false
+    /// Seconds of silence before that line: longer after a "Found keys." that slow live speech may still be saying.
+    @ObservationIgnored private var hintAfter: TimeInterval = 4
     /// Every object pinned so far (by a scan or a find), by lowercased label, with when it was seen.
     @ObservationIgnored private var sightings: [String: (label: String, anchor: ObjectAnchor, time: TimeInterval)] = [:]
     /// The latest frame's camera, to say which side a remembered object is on.
@@ -926,6 +928,7 @@ final class AppModel {
         guidingSince = CACurrentMediaTime()
         obstacleWarned = false
         pendingHintSaid = false
+        hintAfter = label == nil ? 4 : 6  // slow live speech says "Found keys." at 4 s; a tap announces nothing
         guide.start()
     }
 
@@ -1125,8 +1128,7 @@ final class AppModel {
         }
         var pendingHint: String?
         if tuning.networkFallback, pendingBox != nil, !pendingHintSaid, pendingAnnouncement == nil, announcement == nil,
-           guide.state == .guiding, time - guidingSince > 6 {  // ARKit still can't place the table: say why it's quiet
-                                                                 // (after "Found keys.", which slow live speech says at 4 s)
+           guide.state == .guiding, time - guidingSince > hintAfter {  // ARKit still can't place the table: say why it's quiet
             pendingHintSaid = true
             pendingHint = tuning.spanish ? "Todavía no puedo ubicarlo. Mueve el teléfono un poco."
                                          : "I can't place it yet. Move the phone a little."
