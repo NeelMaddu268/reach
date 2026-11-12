@@ -793,16 +793,21 @@ final class AppModel {
         let spanish = tuning.spanish
         let answer: String = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
-                guard let seen = self.sightings.values.filter({ Self.matches($0.label, item) }).max(by: { $0.time < $1.time }) else {
+                guard let latest = self.sightings.filter({ Self.matches($0.value.label, item) }).max(by: { $0.value.time < $1.value.time }) else {
                     return continuation.resume(returning: spanish ? "Todavía no he visto \(item). Di encuentra \(item) y lo busco."
                                                                   : "I haven't seen \(item) yet. Say find \(item) and I'll look.")
                 }
+                let seen = latest.value
                 let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0, spanish: spanish) } ?? (spanish ? "cerca" : "nearby")
                 let ago = Self.timeAgo(Date().timeIntervalSinceReferenceDate - seen.time, spanish: spanish)
                 let plural = spanish ? Self.pluralES(seen.label) : seen.label.hasSuffix("s") && !seen.label.hasSuffix("ss")
+                // A reach there has ended: a find won't go back (they may be in hand), so promise a look, not a trip.
+                let tail = self.unlockedEnds.contains(latest.key)
+                    ? (spanish ? "Di encuentra \(item) y lo busco." : "Say find \(item) and I'll look.")
+                    : (spanish ? "Di encuentra \(item) y te llevo." : "Say find \(item) and I'll take you there.")
                 continuation.resume(returning: spanish
-                    ? "\(plural ? "Tus" : "Tu") \(seen.label) \(plural ? "estaban" : "estaba") \(side), \(ago). Di encuentra \(item) y te llevo."
-                    : "Your \(seen.label) \(plural ? "were" : "was") \(side), \(ago). Say find \(item) and I'll take you there.")
+                    ? "\(plural ? "Tus" : "Tu") \(seen.label) \(plural ? "estaban" : "estaba") \(side), \(ago). \(tail)"
+                    : "Your \(seen.label) \(plural ? "were" : "was") \(side), \(ago). \(tail)")
             }
         }
         audio.say(answer)
