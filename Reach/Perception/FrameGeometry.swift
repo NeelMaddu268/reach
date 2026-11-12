@@ -35,6 +35,13 @@ struct FrameGeometry {
         return point(at: p, distance: values[values.count / 2])
     }
 
+    /// The object's top inside `box`: the highest still surface down the upper half of the box's middle column.
+    /// (Seen at an angle, the box's middle is the object's front side, partway up.)
+    func topPoint(in box: CGRect) -> simd_float3? {
+        [0.05, 0.1, 0.2, 0.3, 0.4, 0.5].compactMap { surfacePoint(at: CGPoint(x: box.midX, y: box.minY + box.height * $0)) }
+            .max { $0.y < $1.y }
+    }
+
     /// How far the finger is from the camera along its axis (meters): the median of this frame's high-confidence
     /// LiDAR readings along the finger, from the tip back to the pad. Nil unless enough of them agree to trust.
     /// (A fingertip covers only a pixel or two of the depth map, so single readings land on the table or knuckles.)

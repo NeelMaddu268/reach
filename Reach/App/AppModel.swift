@@ -1223,9 +1223,9 @@ final class AppModel {
                             trackingLost: Bool, careful: Bool, handAge: TimeInterval) -> Guide.Input? {
         guard var pinned = anchor, let axes = geometry.axes(onPlaneAt: pinned.tableY) else { return nil }
 
-        // Refine the object's height from LiDAR at its middle while the hand is nowhere near it.
+        // Refine the object's height from LiDAR (its top inside the box) while the hand is nowhere near it.
         if let box, finger.map({ !box.insetBy(dx: -box.width, dy: -box.height).contains($0.tip) }) ?? true,
-           let top = geometry.surfacePoint(at: CGPoint(x: box.midX, y: box.midY)) {
+           let top = geometry.topPoint(in: box) {
             pinned.topY = min(max(pinned.topY + (top.y - pinned.topY) * 0.2, pinned.tableY), pinned.tableY + 0.4)
             // Careful: whatever is over the object (an arm, a hand Vision missed, a judge) reads higher, never lower.
             if careful, let measured = pinned.measuredTopY { pinned.topY = min(pinned.topY, measured + 0.005) }

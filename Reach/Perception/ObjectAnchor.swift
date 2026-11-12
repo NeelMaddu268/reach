@@ -3,7 +3,8 @@ import ARKit
 /// An object pinned to the table in world space. ARKit tracks how the phone moves, so projecting the pin
 /// into each new frame keeps the box on the object. (A 2D image tracker drifts whenever the phone moves.)
 struct ObjectAnchor {
-    /// The box's corners, cast onto the table plane (world space).
+    /// The box's corners (world space): the bottom two cast onto the table, the top two (the far rim of the object's
+    /// top) at its top as measured when pinned.
     let corners: [simd_float3]
     /// Height of the table surface (world y).
     let tableY: Float
@@ -12,7 +13,7 @@ struct ObjectAnchor {
     /// The top as LiDAR measured it when pinned; nil without a reading. Careful guidance keeps refinement near it.
     let measuredTopY: Float?
 
-    /// Middle of the object's footprint on the table.
+    /// Middle of the object's footprint, seen from above (its x and z; the corners sit at two heights).
     var center: simd_float3 { corners.reduce(.zero, +) / Float(corners.count) }
 
     /// Half the footprint's size along the user's right and forward directions (meters).
@@ -24,7 +25,8 @@ struct ObjectAnchor {
 
     /// Pins `box` (normalized portrait image coordinates) as seen in `geometry`'s frame, which may be an earlier one,
     /// e.g. the photo Gemini looked at. The table's height comes from LiDAR just around the box (falling back to an
-    /// ARKit raycast), the object's top from LiDAR at its middle. Nil if neither can place the table yet.
+    /// ARKit raycast), the object's top from LiDAR down the upper half of its middle. Nil if neither can place the
+    /// table yet.
     init?(box: CGRect, seenIn geometry: FrameGeometry, session: ARSession) {
         let camera = geometry.camera
         var table: Float?
@@ -37,21 +39,30 @@ struct ObjectAnchor {
                 return geometry.surfacePoint(at: p)?.y
             }.sorted()
             if ring.count >= 4 { table = ring[ring.count / 2] }
-            top = geometry.surfacePoint(at: CGPoint(x: box.midX, y: box.midY))?.y
+            top = geometry.topPoint(in: box)?.y
         }
         guard let tableY = table ?? Self.raycastTable(under: box, camera: camera, session: session) else { return nil }
+        let topY = min(max(top ?? tableY + 0.01, tableY), tableY + 0.4)  // objects on a table: 0–40 cm tall
 
+        // The box's bottom edge is where the object stands on the table. Its top edge is the far rim of the object's top,
+        // so those corners are cast at the top's height: on the table they'd land far behind anything tall. A rim that
+        // can't be cast, or lands nearer than the bottom edge (the top read high: a hand over the box), goes on the table.
         let size = Self.viewport(camera)
-        let plane = Self.horizontalPlane(at: tableY)
-        let corners = [CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
-                       CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.minX, y: box.maxY)].compactMap {
-            camera.unprojectPoint(CGPoint(x: $0.x * size.width, y: $0.y * size.height), ontoPlane: plane,
-                                  orientation: .portrait, viewportSize: size)
+        func cast(_ x: CGFloat, _ y: CGFloat, at height: Float) -> simd_float3? {
+            camera.unprojectPoint(CGPoint(x: x * size.width, y: y * size.height),
+                                  ontoPlane: Self.horizontalPlane(at: height), orientation: .portrait, viewportSize: size)
         }
-        guard corners.count == 4 else { return nil }
-        self.corners = corners
+        let sides = [box.minX, box.maxX].compactMap { x -> (rim: simd_float3, bottom: simd_float3)? in
+            guard let bottom = cast(x, box.maxY, at: tableY), let behind = cast(x, box.minY, at: tableY) else { return nil }
+            guard let rim = cast(x, box.minY, at: topY), simd_dot(rim - bottom, behind - bottom) >= 0 else {
+                return (behind, bottom)
+            }
+            return (rim, bottom)
+        }
+        guard sides.count == 2 else { return nil }
+        corners = [sides[0].rim, sides[1].rim, sides[1].bottom, sides[0].bottom]
         self.tableY = tableY
-        topY = min(max(top ?? tableY + 0.01, tableY), tableY + 0.4)  // objects on a table: 0–40 cm tall
+        self.topY = topY
         measuredTopY = top.map { min(max($0, tableY), tableY + 0.4) }
     }
 
