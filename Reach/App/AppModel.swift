@@ -406,6 +406,10 @@ final class AppModel {
                     guard agrees else { return continuation.resume(returning: 0) }
                 }
                 if shift > 0.05 {
+                    // The scan's pin moves with it, so the next find doesn't go back to the old spot.
+                    if let i = self.scene.firstIndex(where: { simd_distance($0.anchor.center, current.center) < 0.03 }) {
+                        self.scene[i].anchor = pinned
+                    }
                     self.anchor = pinned
                     self.recordSighting(label, pinned)
                     if careful { self.smoothedGap = nil }  // a new top height
@@ -623,10 +627,10 @@ final class AppModel {
         return !label.isEmpty && !query.isEmpty && (query.isSubset(of: label) || label.isSubset(of: query))
     }
 
-    /// A pinned object matching `query`: from the last scan, or (with "where did I leave" on) anywhere Reach has seen one.
+    /// A pinned object matching `query`: from the last scan, or (with `sightings: true`) the last place Reach saw one.
     @MainActor
-    private func scannedObject(matching query: String) async -> (label: String, anchor: ObjectAnchor)? {
-        let useSightings = tuning.whereDidILeave
+    private func scannedObject(matching query: String,
+                               sightings useSightings: Bool = false) async -> (label: String, anchor: ObjectAnchor)? {
         return await withCheckedContinuation { continuation in
             camera.frameQueue.async {
                 if let scanned = self.scene.first(where: { Self.matches($0.label, query) }) {
@@ -635,6 +639,21 @@ final class AppModel {
                 let seen = useSightings ? self.sightings.values.filter { Self.matches($0.label, query) }.max { $0.time < $1.time } : nil
                 continuation.resume(returning: seen.map { ($0.label, $0.anchor) })
             }
+        }
+    }
+
+    /// Drops the scan pin and sighting at a grabbed object's spot (within 6 cm), so the next find asks Gemini.
+    /// Frame queue only.
+    private func forgetPins(at grabbed: ObjectAnchor) {
+        let here = { (pin: ObjectAnchor) in
+            simd_distance(simd_float2(pin.center.x, pin.center.z), simd_float2(grabbed.center.x, grabbed.center.z)) < 0.06
+        }
+        let count = scene.count
+        scene.removeAll { here($0.anchor) }
+        sightings = sightings.filter { !here($0.value.anchor) }
+        if scene.count != count {
+            touching = nil  // indexes into scene
+            watchMisses = []  // aligned with scene
         }
     }
 
@@ -747,6 +766,16 @@ final class AppModel {
         }
         guard targetLabel == query else { return }  // stopped or replaced while we waited
         guard let result else {
+            // Not in view now: with "where did I leave" on, go to where it was last seen. Not for their own one: a
+            // sighting isn't checked against its photo.
+            let seen = tuning.whereDidILeave && !ownOne ? await scannedObject(matching: query, sightings: true) : nil
+            guard targetLabel == query else { return }  // stopped or replaced meanwhile
+            if let seen {
+                targetLabel = seen.label
+                camera.frameQueue.async { self.startGuiding(to: seen.anchor, pendingBox: nil, announcing: seen.label) }
+                startFollowing()
+                return
+            }
             stop()
             audio.say(t("I don't see \(query).", "No veo \(query)."))
             return
@@ -778,6 +807,7 @@ final class AppModel {
     private func pin(_ box: CGRect, seenIn seen: FrameGeometry?, announcing label: String? = nil) {
         camera.frameQueue.async {
             let pinned = seen.flatMap { ObjectAnchor(box: box, seenIn: $0, session: self.camera.session) }
+            if let pinned, let label { self.recordSighting(label, pinned) }  // a fresh look, not a re-used pin
             self.startGuiding(to: pinned, pendingBox: pinned == nil ? box : nil, announcing: label)
         }
     }
@@ -786,7 +816,6 @@ final class AppModel {
     private func startGuiding(to pinned: ObjectAnchor?, pendingBox: CGRect?, announcing label: String?) {
         anchor = pinned
         self.pendingBox = pendingBox
-        if let pinned, let label { recordSighting(label, pinned) }
         pendingAnnouncement = label
         pendingAnnouncementSince = CACurrentMediaTime()  // same clock as frame timestamps
         smoothedGap = nil
@@ -952,6 +981,7 @@ final class AppModel {
             audio.ding()
             camera.lockFocus(at: nil)
             focusLocked = false
+            if let anchor { forgetPins(at: anchor) }  // it's in the user's hand now: the next find asks Gemini
         }
         var announcement: String?
         if let label = pendingAnnouncement {
