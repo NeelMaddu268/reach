@@ -273,7 +273,8 @@ final class AppModel {
         case .watch: startWatching()
         case .stopWatching: stopWatching(saying: true)
         case .remember(let item):
-            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil, !heard.lowercased().contains("guarda esto como") {
+            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil,
+               !heard.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es")).contains("guarda esto como") {
                 // "¿Esta es mi lisinopril?" sounds just like the save: check it; only "guarda esto como mi …" overwrites
                 await checkMine(item, then: t("To replace the saved one, say this is my \(item).",
                                               "Para reemplazar lo guardado, di guarda esto como \(Self.pluralES(item) ? "mis" : "mi") \(item)."))
