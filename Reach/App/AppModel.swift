@@ -273,11 +273,15 @@ final class AppModel {
         case .watch: startWatching()
         case .stopWatching: stopWatching(saying: true)
         case .remember(let item):
-            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil,
-               !heard.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es")).contains("guarda esto como") {
+            let saving = heard.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es")).contains("guarda esto como")
+            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil, !saving {
                 // "¿Esta es mi lisinopril?" sounds just like the save: check it; only "guarda esto como mi …" overwrites
                 await checkMine(item, then: t("To replace the saved one, say this is my \(item).",
                                               "Para reemplazar lo guardado, di guarda esto como \(Self.pluralES(item) ? "mis" : "mi") \(item)."))
+            } else if tuning.spanish, tuning.medicationCheck, MyObjects.hasText(like: item), !saving {
+                // A near saved name ("pastilla" for "pastillas para la presión") may be a question: never save this bottle unasked
+                audio.say(t("I have something saved under a similar name. Ask again with the name you saved it as, or to save this as a new one, say this is my \(item).",
+                            "Tengo algo guardado con un nombre parecido. Pregunta de nuevo con el nombre que usaste, o para guardarlo como nuevo, di guarda esto como \(Self.pluralES(item) ? "mis" : "mi") \(item)."))
             } else if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
