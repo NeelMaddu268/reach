@@ -282,7 +282,7 @@ final class AppModel {
         case nil:
             if heard.isEmpty, tuning.networkFallback, !voice.isPermitted {  // never silent: say why, like cameraNotReady
                 audio.say(t("Reach can't hear you. Turn on Microphone and Speech Recognition for Reach in Settings.",
-                            "Reach no te oye. Activa el micrófono y el reconocimiento de voz para Reach en Ajustes."))
+                            "Reach no te oye. Activa el micrófono y el reconocimiento de voz para Reach en Configuración."))
             } else {
                 audio.say(heard.isEmpty ? t("I didn't hear anything.", "No escuché nada.") : t("Say find, then an object.", "Di encuentra y un objeto."))
             }
@@ -1044,7 +1044,7 @@ final class AppModel {
         guard tuning.networkFallback else { return }
         if cameraError != nil, [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .video)) {
             return audio.say(t("Reach can't use the camera. Turn on Camera for Reach in Settings.",
-                               "Reach no puede usar la cámara. Activa la cámara para Reach en Ajustes."))
+                               "Reach no puede usar la cámara. Activa la cámara para Reach en Configuración."))
         }
         audio.say(t("The camera isn't ready. Try again.", "La cámara no está lista. Intenta de nuevo."))
     }
