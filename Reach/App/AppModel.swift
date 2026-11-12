@@ -892,8 +892,21 @@ final class AppModel {
         guard let label = targetLabel, !relocating else { return }
         relocating = true
         defer { relocating = false }
+        let tip = fingertip  // the hand in the photo about to be taken (the next frame)
         guard let result = try? await locate(label), targetLabel == label, state == .lost || state == .guiding else { return }
-        pin(result.found.box, seenIn: result.geometry)
+        guard tuning.carefulGuidance else { return pin(result.found.box, seenIn: result.geometry) }
+        // Careful: as when following, not from a photo with the hand on or near it (LiDAR would read the hand as its
+        // top). And it's the same reach, so only the pin moves: the dwell, "Down.", the reach timer and the obstacle
+        // warning carry on, and a lock that landed since the check above stays locked.
+        let box = result.found.box
+        if let tip, box.insetBy(dx: -box.width * 0.5, dy: -box.height * 0.5).contains(tip) { return }
+        camera.frameQueue.async {
+            guard self.guide.state == .guiding || self.guide.state == .lost,
+                  let pinned = ObjectAnchor(box: box, seenIn: result.geometry, session: self.camera.session) else { return }
+            self.anchor = pinned
+            self.pendingBox = nil  // a fresher pin than the box still waiting for the table
+            self.smoothedGap = nil  // a new top height
+        }
     }
 
     @MainActor
