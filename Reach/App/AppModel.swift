@@ -57,6 +57,9 @@ final class AppModel {
     @ObservationIgnored private var hintAfter: TimeInterval = 4
     /// Every object pinned so far (by a scan or a find), by lowercased label, with when it was seen.
     @ObservationIgnored private var sightings: [String: (label: String, anchor: ObjectAnchor, time: TimeInterval)] = [:]
+    /// Sightings (by key) where a reach ended without a lock: "where are my keys?" still says where, but a find
+    /// doesn't fall back there, as they may be in the user's hand.
+    @ObservationIgnored private var unlockedEnds: Set<String> = []
     /// The latest frame's camera, to say which side a remembered object is on.
     @ObservationIgnored private var lastCamera: ARCamera?
     @ObservationIgnored private var torch = AutoTorch()
@@ -723,21 +726,27 @@ final class AppModel {
                 if let scanned = self.scene.first(where: { Self.matches($0.label, query) }) {
                     return continuation.resume(returning: scanned)
                 }
-                let seen = useSightings ? self.sightings.values.filter { Self.matches($0.label, query) }.max { $0.time < $1.time } : nil
+                let seen = useSightings ? self.sightings.filter { !self.unlockedEnds.contains($0.key) && Self.matches($0.value.label, query) }
+                    .values.max { $0.time < $1.time } : nil
                 continuation.resume(returning: seen.map { ($0.label, $0.anchor) })
             }
         }
     }
 
     /// Drops the scan pin and sighting at a grabbed object's spot (within 6 cm), so the next find asks Gemini.
+    /// `keepingSightings` keeps the sighting for "where are my keys?", marked so a find doesn't fall back to it.
     /// Frame queue only.
-    private func forgetPins(at grabbed: ObjectAnchor) {
+    private func forgetPins(at grabbed: ObjectAnchor, keepingSightings: Bool = false) {
         let here = { (pin: ObjectAnchor) in
             simd_distance(simd_float2(pin.center.x, pin.center.z), simd_float2(grabbed.center.x, grabbed.center.z)) < 0.06
         }
         let count = scene.count
         scene.removeAll { here($0.anchor) }
-        sightings = sightings.filter { !here($0.value.anchor) }
+        if keepingSightings {
+            unlockedEnds.formUnion(sightings.filter { here($0.value.anchor) }.keys)
+        } else {
+            sightings = sightings.filter { !here($0.value.anchor) }
+        }
         if scene.count != count {
             touching = nil  // indexes into scene
             watchMisses = []  // aligned with scene
@@ -745,10 +754,11 @@ final class AppModel {
     }
 
     /// A reach that ends without a lock (stopped, or replaced by a new target) may still have ended with it in the
-    /// user's hand: forget its pins as a lock does, so the next find asks Gemini. Frame queue only.
+    /// user's hand: forget its pins as a lock does, so the next find asks Gemini, but keep where it was for "where are my
+    /// keys?". Frame queue only.
     private func forgetUnlockedTarget() {
         guard let anchor, guide.state == .guiding || guide.state == .lost else { return }
-        forgetPins(at: anchor)
+        forgetPins(at: anchor, keepingSightings: true)
     }
 
     // MARK: This is my mug
@@ -804,6 +814,7 @@ final class AppModel {
     /// Frame queue only. Wall clock, which keeps counting while the phone sleeps, so "how long ago" stays true.
     private func recordSighting(_ label: String, _ pinned: ObjectAnchor) {
         sightings[label.lowercased()] = (label, pinned, Date().timeIntervalSinceReferenceDate)
+        unlockedEnds.remove(label.lowercased())  // a fresh look: a find may go back here again
     }
 
     /// Which way a pinned object is from where the camera points now.
