@@ -928,6 +928,12 @@ final class AppModel {
         camera.frameQueue.async {
             guard self.guide.state == .guiding || self.guide.state == .lost,
                   let pinned = ObjectAnchor(box: box, seenIn: result.geometry, session: self.camera.session) else { return }
+            // As when following, the scan's pin and the sighting move too, so a lock forgets them, not the old spot.
+            if let current = self.anchor,
+               let i = self.scene.firstIndex(where: { simd_distance($0.anchor.center, current.center) < 0.03 }) {
+                self.scene[i].anchor = pinned
+            }
+            self.recordSighting(label, pinned)
             self.anchor = pinned
             self.pendingBox = nil  // a fresher pin than the box still waiting for the table
             self.smoothedGap = nil  // a new top height
