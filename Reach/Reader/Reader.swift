@@ -117,7 +117,7 @@ struct Reader {
         // Warn from the text read on the phone as well as Gemini's reading, so a missed mention still warns.
         let printed = text.joined(separator: " ").lowercased()
         let flagged = allergies.filter { allergen in
-            Self.mentions(printed, allergen) || reply.allergens_on_label.contains { Self.mentions($0.lowercased(), allergen) }
+            Self.mentions(printed, allergen, wholeWord: true) || reply.allergens_on_label.contains { Self.mentions($0.lowercased(), allergen) }
         }
         var spoken = Self.withoutReassurance(reply.answer)
         if spoken.isEmpty {
@@ -134,17 +134,21 @@ struct Reader {
         return (spoken, Item(jpeg: jpeg, text: text, question: question, answer: reply.answer, time: CACurrentMediaTime()))
     }
 
-    /// "peanuts" matches "peanut", "Peanuts", "peanut butter".
-    private static func mentions(_ text: String, _ allergen: String) -> Bool {
+    /// "peanuts" matches "peanut", "Peanuts", "peanut butter"; with wholeWord, "nuts" matches "walnuts" but not "nutrition".
+    private static func mentions(_ text: String, _ allergen: String, wholeWord: Bool = false) -> Bool {
         let singular = allergen.hasSuffix("s") ? String(allergen.dropLast()) : allergen
-        return !singular.isEmpty && text.contains(singular)
+        guard !singular.isEmpty else { return false }
+        guard wholeWord else { return text.contains(singular) }
+        return text.range(of: NSRegularExpression.escapedPattern(for: singular) + #"(e?s|beans?)?\b"#, options: .regularExpression) != nil
     }
 
     /// Drops any sentence that reassures ("safe", "allergen-free", "doesn't contain …"): Reach only reports what's printed.
+    /// A negated "safe" is a printed warning ("not microwave safe", "no es seguro"), so it stays.
     private static func withoutReassurance(_ answer: String) -> String {
         let reassurance = try! NSRegularExpression(pattern:
-            #"\bsafe\b|allergen[- ]free|\bfree (of|from)\b|\b(does ?n['’]?t|does not|do not|don['’]t) contain|\bcontains? no\b|\bno traces?\b"#
-            + #"|\bsegur[oa]s?\b|sin al[eé]rgenos|libre de|\bno contiene\b"#,
+            #"(?<!\bnot |n['’]t |\bnever |\bnot \w{1,12}[- ]|n['’]t \w{1,12}[- ]|\bnever \w{1,12}[- ])\bsafe\b"#
+            + #"|allergen[- ]free|\bfree (of|from)\b|\b(does ?n['’]?t|does not|do not|don['’]t) contain|\bcontains? no\b|\bno traces?\b"#
+            + #"|(?<!\bno es |\bno son |\bno es \w{1,12} |\bno son \w{1,12} )\bsegur[oa]s?\b|sin al[eé]rgenos|libre de|\bno contiene\b"#,
             options: .caseInsensitive)
         var sentences: [String] = []
         answer.enumerateSubstrings(in: answer.startIndex..., options: .bySentences) { sentence, _, _, _ in
