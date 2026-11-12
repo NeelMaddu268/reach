@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var model = AppModel()
     @State private var showSettings = false
+    @State private var backgroundPress = 0  // a brush or a missed button isn't a hold: listen once a press lasts holdDelay, as on the card
 
     var body: some View {
         VStack(spacing: 10) {
@@ -61,12 +62,16 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 200, pressing: { pressing in
+                    backgroundPress += 1
+                    let id = backgroundPress
                     if pressing {
-                        model.beginListening()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + TouchSurface.holdDelay) {
+                            if backgroundPress == id { model.beginListening() }  // still the same press
+                        }
                     } else {
-                        Task { await model.endListening() }
+                        Task { await model.endListening() }  // ignored when this press never started listening
                     }
-                }, perform: {})  // same hold-to-talk as MicButton, for the screen around the card and controls
+                }, perform: {})  // same hold-to-talk as the camera card, for the screen around the card and controls
                 .accessibilityHidden(true)
         }
         .preferredColorScheme(.dark)
