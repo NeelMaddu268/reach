@@ -111,7 +111,7 @@ private struct TuningSlider: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            Slider(value: $value, in: range)
+            Slider(value: $value, in: range) { Text(title) }
                 .tint(Theme.accent)
             if let note {
                 Text(note)

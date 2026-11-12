@@ -256,8 +256,8 @@ final class Guide {
                              "Closer", "Closer and left", "Left", "Farther and left"]
     static let down = "Down"
     /// Spanish versions (spoken live by ElevenLabs; no pre-made clips).
-    static let directionsES = ["Más lejos", "Más lejos y a la derecha", "Derecha", "Más cerca y a la derecha",
-                               "Más cerca", "Más cerca y a la izquierda", "Izquierda", "Más lejos y a la izquierda"]
+    static let directionsES = ["Más lejos", "Más lejos y a la derecha", "A la derecha", "Más cerca y a la derecha",
+                               "Más cerca", "Más cerca y a la izquierda", "A la izquierda", "Más lejos y a la izquierda"]
     static let downES = "Baja"
 
     /// Index into `directions` for the way from the hand to the object.
