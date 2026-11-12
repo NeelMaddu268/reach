@@ -118,7 +118,9 @@ extension Command {
                 guard let range = text.range(of: trigger + " ") else { continue }
                 let before = text[..<range.lowerBound].split { !$0.isLetter }.last.map(String.init)
                 guard !spanish || before == nil || ["esto", "eso", "si", "y", "oye"].contains(before!) else { continue }
-                let name = text[range.upperBound...].trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+                var name = text[range.upperBound...].trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+                let polite = spanish ? " por favor" : " please"  // "is this my lisinopril, please?" asks about "lisinopril"
+                if name.hasSuffix(polite) { name = name.dropLast(polite.count).trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)) }
                 if !name.isEmpty { return .checkMine(name) }
             }
         }
