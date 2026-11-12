@@ -1118,7 +1118,8 @@ final class AppModel {
         }
         var pendingHint: String?
         if tuning.networkFallback, pendingBox != nil, !pendingHintSaid, pendingAnnouncement == nil, announcement == nil,
-           guide.state == .guiding, time - guidingSince > 4 {  // ARKit still can't place the table: say why it's quiet
+           guide.state == .guiding, time - guidingSince > 6 {  // ARKit still can't place the table: say why it's quiet
+                                                                 // (after "Found keys.", which slow live speech says at 4 s)
             pendingHintSaid = true
             pendingHint = tuning.spanish ? "Todavía no puedo ubicarlo. Mueve el teléfono un poco."
                                          : "I can't place it yet. Move the phone a little."
