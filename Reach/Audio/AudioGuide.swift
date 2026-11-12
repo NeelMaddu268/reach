@@ -1,5 +1,6 @@
 import AVFoundation
 import os
+import UIKit
 
 /// Earbud audio: the sonar (soft pings whose pan, pitch and rate come from `Guide`, a hum when over the object), the lock chime,
 /// and the voice. Speech prefers a bundled ElevenLabs clip (Audio/Clips/), then live ElevenLabs (cached on disk),
@@ -52,6 +53,16 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
         engine.connect(source, to: engine.mainMixerNode, format: format)
         // Route changes (AirPods in or out) stop the engine.
         NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            try? self?.engine.start()
+        }
+        // A call, Siri or an alarm interrupts the session, which stops the engine; restart it when that ends.
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: .main) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+            try? self?.engine.start()
+        }
+        // Coming back from the background (or a start that failed at launch): no "ended" arrives for a suspension.
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             try? self?.engine.start()
         }
         do {
