@@ -467,7 +467,7 @@ final class AppModel {
         }
         guard shift > 0.05 else { return }
         targetShownAt = Date()
-        if shift > 0.1 { audio.say(t("The \(label) moved.", "\(Self.capitalized(label)) \(label.hasSuffix("s") ? "se movieron" : "se movió").")) }
+        if shift > 0.1 { audio.say(t("The \(label) moved.", "\(Self.capitalized(label)) \(Self.pluralES(label) ? "se movieron" : "se movió").")) }
     }
 
     // MARK: Watch mode
@@ -579,7 +579,7 @@ final class AppModel {
                 scene[moved].anchor = sighting.anchor
                 recordSighting(scene[moved].label, sighting.anchor)
                 let side = Self.side(of: sighting.anchor, from: camera, spanish: spanish)
-                let verb = scene[moved].label.hasSuffix("s") ? "se movieron" : "se movió"
+                let verb = Self.pluralES(scene[moved].label) ? "se movieron" : "se movió"
                 lines.append(spanish ? "\(Self.capitalized(scene[moved].label)) \(verb) \(side)."
                                      : "The \(scene[moved].label) moved \(side).")
             } else if watchCandidates.contains(where: { distance($0.anchor, sighting.anchor) < 0.06 }) {
@@ -606,7 +606,7 @@ final class AppModel {
             let missed = (index < watchMisses.count ? watchMisses[index] : 0) + (inView ? 1 : 0)
             if missed >= 2 {
                 let plural = pin.label.hasSuffix("s") && !pin.label.hasSuffix("ss")
-                lines.append(spanish ? "Ya no \(plural ? "están" : "está"): \(pin.label)." : "The \(pin.label) \(plural ? "are" : "is") gone.")
+                lines.append(spanish ? "Ya no \(Self.pluralES(pin.label) ? "están" : "está"): \(pin.label)." : "The \(pin.label) \(plural ? "are" : "is") gone.")
             } else {
                 kept.append(pin)
                 misses.append(missed)
@@ -626,6 +626,11 @@ final class AppModel {
 
     private static func capitalized(_ text: String) -> String {
         text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// Spanish puts the noun first ("frasco de pastillas", "gafas de sol"), so the first word says one or many.
+    private static func pluralES(_ label: String) -> Bool {
+        (label.split(separator: " ").first.map(String.init) ?? label).hasSuffix("s")
     }
 
     // MARK: What's on the table?
@@ -777,7 +782,7 @@ final class AppModel {
                 }
                 let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0, spanish: spanish) } ?? (spanish ? "cerca" : "nearby")
                 let ago = Self.timeAgo(Date().timeIntervalSinceReferenceDate - seen.time, spanish: spanish)
-                let plural = seen.label.hasSuffix("s") && !seen.label.hasSuffix("ss")
+                let plural = spanish ? Self.pluralES(seen.label) : seen.label.hasSuffix("s") && !seen.label.hasSuffix("ss")
                 continuation.resume(returning: spanish
                     ? "\(plural ? "Tus" : "Tu") \(seen.label) \(plural ? "estaban" : "estaba") \(side), \(ago). Di encuentra \(item) y te llevo."
                     : "Your \(seen.label) \(plural ? "were" : "was") \(side), \(ago). Say find \(item) and I'll take you there.")
