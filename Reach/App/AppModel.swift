@@ -230,6 +230,8 @@ final class AppModel {
         Haptics.tap()  // only when listening really starts: a press while the last one is still finishing records nothing
         isListening = true
         audio.setMuted(true)
+        audio.hush()  // the mic would hear Reach's own voice on the loudspeaker
+        if tuning.carefulGuidance { camera.frameQueue.async { self.guide.forgetDown() } }  // a "Down." cut off: say it again
         voice.start()
     }
 

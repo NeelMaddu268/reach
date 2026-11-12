@@ -95,10 +95,21 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
 
     // MARK: Voice (call on main)
 
+    /// Stops whatever is being said (the user started talking). The cut-off phrase isn't said later.
+    func hush() {
+        fetch?.cancel()
+        fetch = nil
+        speakToken = nil
+        player?.stop()
+        speech.stopSpeaking(at: .immediate)
+        setDucked(false)  // stopping doesn't call the finish delegates
+    }
+
     /// Says `text` now, cutting off anything being said.
     func say(_ text: String) {
         fetch?.cancel()
         fetch = nil
+        speakToken = nil  // the phrase being fetched is cut off too: its 2.5 s fallback mustn't say it later
         player?.stop()
         speech.stopSpeaking(at: .immediate)
         speak(text)
