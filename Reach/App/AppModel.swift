@@ -276,7 +276,7 @@ final class AppModel {
             if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil, !heard.lowercased().contains("guarda esto como") {
                 // "¿Esta es mi lisinopril?" sounds just like the save: check it; only "guarda esto como mi …" overwrites
                 await checkMine(item, then: t("To replace the saved one, say this is my \(item).",
-                                              "Para reemplazar lo guardado, di guarda esto como mi \(item)."))
+                                              "Para reemplazar lo guardado, di guarda esto como \(Self.pluralES(item) ? "mis" : "mi") \(item)."))
             } else if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
