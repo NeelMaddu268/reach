@@ -133,12 +133,13 @@ struct Reader {
         return (spoken, Item(jpeg: jpeg, text: text, question: question, answer: reply.answer, time: Date().timeIntervalSinceReferenceDate))
     }
 
-    /// "peanuts" matches "peanut", "Peanuts", "peanut butter"; with wholeWord, "nuts" matches "walnuts" but not "nutrition".
+    /// "peanuts" matches "peanut", "Peanuts", "peanut butter"; with wholeWord, "nuts" matches "walnuts" but not "nutrition",
+    /// and "soy" or "milk" still match "soya", "soybean" or "milkfat".
     private static func mentions(_ text: String, _ allergen: String, wholeWord: Bool = false) -> Bool {
         let singular = allergen.hasSuffix("s") ? String(allergen.dropLast()) : allergen
         guard !singular.isEmpty else { return false }
         guard wholeWord else { return text.contains(singular) }
-        return text.range(of: NSRegularExpression.escapedPattern(for: singular) + #"(e?s|beans?)?\b"#, options: .regularExpression) != nil
+        return text.range(of: NSRegularExpression.escapedPattern(for: singular) + #"(e?s|a|beans?|fat)?\b"#, options: .regularExpression) != nil
     }
 
     /// Drops any sentence that reassures ("safe", "allergen-free", "doesn't contain …"): Reach only reports what's printed.
