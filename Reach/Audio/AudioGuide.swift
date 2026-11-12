@@ -17,7 +17,7 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     private let engine = AVAudioEngine()
     private let synth = Synth()
     private let speech = AVSpeechSynthesizer()
-    /// Speak Spanish: live ElevenLabs with language "es" (the bundled clips are English) and an es-US fallback voice.
+    /// Speak Spanish: live ElevenLabs with language "es" (the bundled clips are English) and an es-MX fallback voice.
     var spanish = false
     /// No gaps: if live speech is slow (> 2.5 s) or failed in the last 30 s, the iPhone voice speaks instead.
     var networkFallback = false
@@ -183,10 +183,11 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
 
     private func speakWithSystemVoice(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
-        let language = spanish ? "es-US" : "en-US"
+        let language = spanish ? "es-MX" : "en-US"  // iOS has no es-US voice; nil would mean the phone's own (maybe English) one
         utterance.voice = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language == language }
             .max { $0.quality.rawValue < $1.quality.rawValue }  // the best installed one
+            ?? AVSpeechSynthesisVoice(language: language)
         speech.speak(utterance)
     }
 
@@ -208,12 +209,16 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     /// A bundled clip (scripts/make_clips.py), or audio cached from an earlier live request.
     private static func storedAudio(for text: String) -> Data? {
         let name = ElevenLabs.slug(text)
+        guard !name.isEmpty else { return nil }  // "" would match the first clip in the bundle
         if let url = Bundle.main.url(forResource: name, withExtension: "mp3") { return try? Data(contentsOf: url) }
+        guard name.count <= 150 else { return nil }  // cut to 150, two long phrases would share one file
         return try? Data(contentsOf: cacheURL(name))
     }
 
     private static func cache(_ audio: Data, for text: String) {
-        let url = cacheURL(ElevenLabs.slug(text))
+        let name = ElevenLabs.slug(text)
+        guard !name.isEmpty, name.count <= 150 else { return }  // never read back (see storedAudio)
+        let url = cacheURL(name)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? audio.write(to: url)
     }
