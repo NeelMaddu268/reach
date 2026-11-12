@@ -122,7 +122,9 @@ extension Command {
                           "entonces", "hola", "perdon", "oiga", "reach"]
                 let afterIf = ["esta", "este", "estas", "estos"].contains(lead.last ?? "") && lead.dropLast().last == "si"
                     && !transcript.lowercased().split(whereSeparator: { !$0.isLetter }).contains("sí")  // "Sí, esta es mi …" still saves
-                guard !spanish || lead.last == nil || ok.contains(lead.last!) || afterIf else { continue }
+                let thisOne = lead.count >= 2 && ["este", "esta", "estos", "estas", "ese", "esa", "esos", "esas"].contains(lead[lead.count - 2])
+                    && lead.dropLast(2).allSatisfy(ok.contains)  // "¿este frasco es mi …?", not "¿cuál de estas pastillas es mi …?"
+                guard !spanish || lead.last == nil || ok.contains(lead.last!) || afterIf || thisOne else { continue }
                 var name = text[range.upperBound...].trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
                 let polite = spanish ? " por favor" : " please"  // "is this my lisinopril, please?" asks about "lisinopril"
                 if name.hasSuffix(polite) { name = name.dropLast(polite.count).trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)) }
