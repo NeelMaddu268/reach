@@ -268,8 +268,10 @@ final class AppModel {
         case .watch: startWatching()
         case .stopWatching: stopWatching(saying: true)
         case .remember(let item):
-            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil {
-                await checkMine(item)  // "¿Esta es mi lisinopril?" sounds just like the save: check it, never overwrite a saved label
+            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil, !heard.lowercased().contains("guarda esto como") {
+                // "¿Esta es mi lisinopril?" sounds just like the save: check it; only "guarda esto como mi …" overwrites
+                await checkMine(item, then: t("To replace the saved one, say this is my \(item).",
+                                              "Para reemplazar lo guardado, di guarda esto como mi \(item)."))
             } else if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
@@ -382,8 +384,9 @@ final class AppModel {
     // MARK: Is this my medicine?
 
     /// "Is this my lisinopril?": the held bottle's label against the one saved with "this is my lisinopril".
+    /// `tail` is said after the answer, in the same line (a second say would cut the answer off).
     @MainActor
-    func checkMine(_ name: String) async {
+    func checkMine(_ name: String, then tail: String? = nil) async {
         guard !reading else { return stillReading() }
         guard let photo = MyObjects.reference(for: name), let text = MyObjects.text(for: name) else {
             if MyObjects.hasText(like: name) {  // saved under a near name: ask with that one, never save this bottle as a new one
@@ -405,7 +408,7 @@ final class AppModel {
             }
             readMs = (CACurrentMediaTime() - start) * 1000
             geminiMs = readMs
-            audio.say(answer)
+            audio.say(tail.map { "\(answer) \($0)" } ?? answer)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Check: \(error.localizedDescription)")

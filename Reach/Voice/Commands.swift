@@ -124,7 +124,8 @@ extension Command {
         return nil
     }
 
-    /// "Encuentra mis llaves", "¿qué es esto?", "¿qué hay en la mesa?", "¿dónde están mis llaves?", "esta es mi taza", "para".
+    /// "Encuentra mis llaves", "¿qué es esto?", "¿qué hay en la mesa?", "¿dónde están mis llaves?", "esta es mi taza",
+    /// "guarda esto como mi taza", "para".
     private static func spanish(_ transcript: String) -> Command? {
         // Accents folded, so "qué" and "que" both match.
         let text = transcript.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es"))
@@ -146,7 +147,7 @@ extension Command {
             if words.suffix(2) == ["por", "favor"] { words.removeLast(2) }
             return words.isEmpty ? nil : words.joined(separator: " ")
         }
-        for trigger in ["esta es mi", "este es mi", "estas son mis", "estos son mis"] {
+        for trigger in ["esta es mi", "este es mi", "estas son mis", "estos son mis", "guarda esto como"] {
             if let object = object(after: trigger) { return .remember(object) }
         }
         for trigger in ["encuentra", "busca", "donde deje", "donde puse", "donde esta", "donde estan"] {

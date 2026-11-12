@@ -53,7 +53,7 @@ Hold anywhere on the screen (or the blue button), speak, let go.
 | "what's on the table?" | "¿qué hay en la mesa?" |
 | "what's this?", "is this decaf?", "how many do I take?" | "¿qué es esto?", "¿tiene cacahuates?" |
 | "where are my keys?", "where did I leave my wallet?" | "¿dónde están mis llaves?" |
-| "this is my mug" | "esta es mi taza" |
+| "this is my mug" | "esta es mi taza", "guarda esto como mi taza" (replaces a saved one) |
 | "how much money is this?", "count my money" | "¿cuánto dinero hay?", "cuenta mi dinero" |
 | "is this my lisinopril?" | "¿es mi lisinopril?" |
 | "tell me if anything changes", "stop watching" | "avísame si algo cambia", "deja de vigilar" |
