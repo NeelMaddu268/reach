@@ -263,7 +263,9 @@ final class AppModel {
         case .watch: startWatching()
         case .stopWatching: stopWatching(saying: true)
         case .remember(let item):
-            if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
+            if tuning.spanish, tuning.medicationCheck, MyObjects.text(for: item) != nil {
+                await checkMine(item)  // "¿Esta es mi lisinopril?" sounds just like the save: check it, never overwrite a saved label
+            } else if tuning.myObjects || tuning.medicationCheck { await remember(item) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }  // off: as before
         case .whereIs(let item):
             if tuning.whereDidILeave {
                 await whereIs(item)
