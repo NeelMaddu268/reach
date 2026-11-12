@@ -64,6 +64,8 @@ final class AppModel {
     @ObservationIgnored private var scanning = false
     /// When hold-to-talk last ended (host clock), so a careful "Down." doesn't cut off the reply.
     @ObservationIgnored private var listenEndedAt: TimeInterval = 0
+    /// The last listen is still being transcribed (voice.stop() is waiting).
+    @ObservationIgnored private var ending = false
     /// The last held item asked about, kept for one follow-up question.
     @ObservationIgnored private var lastItem: Reader.Item?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
@@ -237,8 +239,10 @@ final class AppModel {
 
     @MainActor
     func endListening() async {
-        guard isListening else { return }
+        guard isListening, !ending else { return }  // a second end while the last one finishes has nothing to end
+        ending = true
         let heard = await voice.stop()
+        ending = false
         isListening = false
         audio.setMuted(false)
         lastHeard = heard
