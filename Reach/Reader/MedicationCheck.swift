@@ -3,7 +3,8 @@ import Foundation
 /// "Is this my lisinopril?": compares the held bottle's printed label with the one saved by "this is my lisinopril",
 /// using printed text only. Says it can't confirm whenever the label can't be read.
 struct MedicationCheck {
-    func check(_ name: String, jpeg: Data, saved: (photo: Data, text: String), model: String, spanish: Bool) async throws -> String {
+    /// The spoken answer, and whether it's a confirmed yes.
+    func check(_ name: String, jpeg: Data, saved: (photo: Data, text: String), model: String, spanish: Bool) async throws -> (answer: String, yes: Bool) {
         let text = await Reader.recognizeText(in: jpeg)
         let prompt = """
         The first photo is the label of the person's own \(name). Text read from it: \(saved.text.isEmpty ? "none" : saved.text).
@@ -26,18 +27,18 @@ struct MedicationCheck {
 
         let cantConfirm = spanish ? "No puedo leer bien esta etiqueta, así que no puedo confirmar que sea tu \(name)."
                                   : "I can't read this label clearly, so I can't confirm it's your \(name)."
-        guard reply.readable else { return cantConfirm }
+        guard reply.readable else { return (cantConfirm, false) }
         if reply.same {
             // Only say yes when the name is actually printed on the label in front of the camera.
             let printed = (text.joined(separator: " ") + " " + reply.name + " " + reply.label_says).lowercased()
-            guard printed.contains(name.lowercased()) || !saved.text.lowercased().contains(name.lowercased()) else { return cantConfirm }
+            guard printed.contains(name.lowercased()) || !saved.text.lowercased().contains(name.lowercased()) else { return (cantConfirm, false) }
             let strength = reply.strength.trimmingCharacters(in: .whitespaces)
-            if spanish { return strength.isEmpty ? "Sí, es tu \(name)." : "Sí, es tu \(name), \(strength)." }
-            return strength.isEmpty ? "Yes, this is your \(name)." : "Yes, this is your \(name), \(strength)."
+            if spanish { return (strength.isEmpty ? "Sí, es tu \(name)." : "Sí, es tu \(name), \(strength).", true) }
+            return (strength.isEmpty ? "Yes, this is your \(name)." : "Yes, this is your \(name), \(strength).", true)
         }
         let says = reply.label_says.isEmpty ? reply.name : reply.label_says
-        if spanish { return "Cuidado, esto no es tu \(name). La etiqueta dice \(says)." }
-        return "Careful, this isn't your \(name). The label says \(says)."
+        if spanish { return ("Cuidado, esto no es tu \(name). La etiqueta dice \(says).", false) }
+        return ("Careful, this isn't your \(name). The label says \(says).", false)
     }
 
     private struct Reply: Decodable {

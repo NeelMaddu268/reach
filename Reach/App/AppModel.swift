@@ -389,7 +389,8 @@ final class AppModel {
     // MARK: Is this my medicine?
 
     /// "Is this my lisinopril?": the held bottle's label against the one saved with "this is my lisinopril".
-    /// `tail` is said after the answer, in the same line (a second say would cut the answer off).
+    /// `tail` is said after a yes, in the same line (a second say would cut the answer off); never after a no or a
+    /// can't-confirm.
     @MainActor
     func checkMine(_ name: String, then tail: String? = nil) async {
         guard !reading else { return stillReading() }
@@ -407,13 +408,13 @@ final class AppModel {
         guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
         let start = CACurrentMediaTime()
         do {
-            let answer = try await stillLooking {
+            let (answer, yes) = try await stillLooking {
                 try await medicationCheck.check(name, jpeg: snapshot.jpeg, saved: (photo, text), model: tuning.geminiModel,
                                                 spanish: tuning.spanish)
             }
             readMs = (CACurrentMediaTime() - start) * 1000
             geminiMs = readMs
-            audio.say(tail.map { "\(answer) \($0)" } ?? answer)
+            audio.say(tail.map { yes ? "\(answer) \($0)" : answer } ?? answer)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Check: \(error.localizedDescription)")
