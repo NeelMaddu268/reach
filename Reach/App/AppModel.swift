@@ -975,6 +975,8 @@ final class AppModel {
         camera.frameQueue.async {
             guard self.guide.state == .guiding || self.guide.state == .lost,
                   let pinned = ObjectAnchor(box: box, seenIn: result.geometry, session: self.camera.session) else { return }
+            // A hand past it can still lie over it, and whatever is over it reads higher, never lower: keep the pin we have.
+            if let current = self.anchor, pinned.topY - pinned.tableY > current.topY - current.tableY + 0.03 { return }
             // As when following, the scan's pin and the sighting move too, so a lock forgets them, not the old spot.
             if let current = self.anchor,
                let i = self.scene.firstIndex(where: { simd_distance($0.anchor.center, current.center) < 0.03 }) {
