@@ -404,8 +404,8 @@ final class AppModel {
     // MARK: Is this my medicine?
 
     /// "Is this my lisinopril?": the held bottle's label against the one saved with "this is my lisinopril".
-    /// `tail` is said after a yes, in the same line (a second say would cut the answer off); never after a no or a
-    /// can't-confirm.
+    /// `tail` is said after a yes, or when the saved one has no printed label to protect, in the same line (a second say
+    /// would cut the answer off); otherwise, after a no or a can't-confirm, it says nothing was saved.
     @MainActor
     func checkMine(_ name: String, then tail: String? = nil) async {
         guard !reading else { return stillReading() }
@@ -429,7 +429,8 @@ final class AppModel {
             }
             readMs = (CACurrentMediaTime() - start) * 1000
             geminiMs = readMs
-            audio.say(tail.map { yes ? "\(answer) \($0)" : answer } ?? answer)
+            let noLabel = !text.contains(where: \.isLetter)  // saved with no printed label (a plain mug): nothing to protect
+            audio.say(tail.map { yes || noLabel ? "\(answer) \($0)" : "\(answer) " + t("I didn't save it.", "No guardé nada.") } ?? answer)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
             print("Check: \(error.localizedDescription)")
