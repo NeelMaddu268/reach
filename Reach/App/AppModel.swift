@@ -423,7 +423,7 @@ final class AppModel {
         }
         guard shift > 0.05 else { return }
         targetShownAt = Date()
-        if shift > 0.1 { audio.say(t("The \(label) moved.", "\(Self.capitalized(label)) se movió.")) }
+        if shift > 0.1 { audio.say(t("The \(label) moved.", "\(Self.capitalized(label)) \(label.hasSuffix("s") ? "se movieron" : "se movió").")) }
     }
 
     // MARK: Watch mode
@@ -501,6 +501,7 @@ final class AppModel {
                             spanish: Bool) -> [String] {
         if learnOnly {
             scene = sightings.sorted { $0.anchor.center.x < $1.anchor.center.x }
+            scene.forEach { recordSighting($0.label, $0.anchor) }  // as a scan does, for "where are my keys?"
             watchMisses = []
             watchCandidates = []
             touching = nil
@@ -511,19 +512,28 @@ final class AppModel {
         }
         var lines: [String] = []
         var seen = Set<Int>()
-        var candidates: [(label: String, anchor: ObjectAnchor)] = []
-        for sighting in sightings {
+        var rest: [(label: String, anchor: ObjectAnchor)] = []
+        for sighting in sightings {  // everything still there first, so a newcomer can't claim an unchanged pin as moved
             let open = scene.indices.filter { !seen.contains($0) }
             if let same = open.min(by: { distance(scene[$0].anchor, sighting.anchor) < distance(scene[$1].anchor, sighting.anchor) }),
                distance(scene[same].anchor, sighting.anchor) < 0.06 {
                 seen.insert(same)  // still there
-            } else if let moved = open.first(where: { Self.matches(scene[$0].label, sighting.label)
-                                                       && distance(scene[$0].anchor, sighting.anchor) < 0.6 }) {
+                recordSighting(scene[same].label, scene[same].anchor)  // seen just now
+            } else {
+                rest.append(sighting)
+            }
+        }
+        var candidates: [(label: String, anchor: ObjectAnchor)] = []
+        for sighting in rest {
+            let open = scene.indices.filter { !seen.contains($0) }
+            if let moved = open.first(where: { Self.matches(scene[$0].label, sighting.label)
+                                               && distance(scene[$0].anchor, sighting.anchor) < 0.6 }) {
                 seen.insert(moved)
                 scene[moved].anchor = sighting.anchor
                 recordSighting(scene[moved].label, sighting.anchor)
                 let side = Self.side(of: sighting.anchor, from: camera, spanish: spanish)
-                lines.append(spanish ? "\(Self.capitalized(scene[moved].label)) se movió \(side)."
+                let verb = scene[moved].label.hasSuffix("s") ? "se movieron" : "se movió"
+                lines.append(spanish ? "\(Self.capitalized(scene[moved].label)) \(verb) \(side)."
                                      : "The \(scene[moved].label) moved \(side).")
             } else if watchCandidates.contains(where: { distance($0.anchor, sighting.anchor) < 0.06 }) {
                 scene.append(sighting)
@@ -549,7 +559,7 @@ final class AppModel {
             let missed = (index < watchMisses.count ? watchMisses[index] : 0) + (inView ? 1 : 0)
             if missed >= 2 {
                 let plural = pin.label.hasSuffix("s") && !pin.label.hasSuffix("ss")
-                lines.append(spanish ? "Ya no está: \(pin.label)." : "The \(pin.label) \(plural ? "are" : "is") gone.")
+                lines.append(spanish ? "Ya no \(plural ? "están" : "está"): \(pin.label)." : "The \(pin.label) \(plural ? "are" : "is") gone.")
             } else {
                 kept.append(pin)
                 misses.append(missed)
