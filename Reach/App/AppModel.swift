@@ -826,7 +826,7 @@ final class AppModel {
                 // A find won't go back there: a reach there has ended or is about to (they may be in hand), or they're
                 // their own and get checked against the photo. So promise a look, not a trip.
                 let tail = ownOne || reaching || self.unlockedEnds.contains(latest.key)
-                    ? (spanish ? "Di encuentra \(item) y lo busco." : "Say find \(item) and I'll look.")
+                    ? (spanish ? "Di encuentra \(item) y vuelvo a buscar." : "Say find \(item) and I'll look.")
                     : (spanish ? "Di encuentra \(item) y te llevo." : "Say find \(item) and I'll take you there.")
                 continuation.resume(returning: spanish
                     ? "\(plural ? "Tus" : "Tu") \(seen.label) \(plural ? "estaban" : "estaba") \(side), \(ago). \(tail)"
