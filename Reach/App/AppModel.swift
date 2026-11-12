@@ -725,6 +725,13 @@ final class AppModel {
         }
     }
 
+    /// A reach that ends without a lock (stopped, or replaced by a new target) may still have ended with it in the
+    /// user's hand: forget its pins as a lock does, so the next find asks Gemini. Frame queue only.
+    private func forgetUnlockedTarget() {
+        guard let anchor, guide.state == .guiding || guide.state == .lost else { return }
+        forgetPins(at: anchor)
+    }
+
     // MARK: This is my mug
 
     /// Finds `item` in the frame (the one being held up, nearest the person) and saves it as the reference photo.
@@ -812,6 +819,7 @@ final class AppModel {
         findID += 1
         let id = findID
         targetLabel = query
+        camera.frameQueue.async { self.forgetUnlockedTarget() }  // the reach it replaces
         if tuning.spanish && tuning.carefulGuidance { audio.prefetch(["Baja.", "Listo."]) }  // no bundled Spanish clips
         let ownOne = tuning.myObjects && MyObjects.reference(for: query) != nil  // their own one: ask Gemini, with its photo
         if !ownOne, let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
@@ -862,6 +870,7 @@ final class AppModel {
     /// Guide the hand to a box tapped or drawn on screen (normalized, origin top-left).
     func seed(_ box: CGRect) {
         targetLabel = nil
+        camera.frameQueue.async { self.forgetUnlockedTarget() }  // the reach it replaces
         pin(box, seenIn: nil)
     }
 
@@ -871,6 +880,7 @@ final class AppModel {
         followTask?.cancel()
         targetLabel = nil
         camera.frameQueue.async {
+            self.forgetUnlockedTarget()
             self.clearTarget()
             self.guide.stop()
             self.audio.setTone(.silent)
