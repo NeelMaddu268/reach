@@ -755,16 +755,18 @@ final class AppModel {
     /// for "where are my keys?", marked so a find doesn't fall back to it (or past it, to an older one).
     /// Frame queue only.
     private func forgetPins(at grabbed: ObjectAnchor) {
-        let here = { (pin: ObjectAnchor) in
-            simd_distance(simd_float2(pin.center.x, pin.center.z), simd_float2(grabbed.center.x, grabbed.center.z)) < 0.06
-        }
         let count = scene.count
-        scene.removeAll { here($0.anchor) }
-        unlockedEnds.formUnion(sightings.filter { here($0.value.anchor) }.keys)
+        scene.removeAll { Self.sameSpot($0.anchor, grabbed) }
+        unlockedEnds.formUnion(sightings.filter { Self.sameSpot($0.value.anchor, grabbed) }.keys)
         if scene.count != count {
             touching = nil  // indexes into scene
             watchMisses = []  // aligned with scene
         }
+    }
+
+    /// Within 6 cm across the table: the same object's spot. Shared so "where are my keys?" tells what a find will do.
+    private static func sameSpot(_ a: ObjectAnchor, _ b: ObjectAnchor) -> Bool {
+        simd_distance(simd_float2(a.center.x, a.center.z), simd_float2(b.center.x, b.center.z)) < 0.06
     }
 
     /// A reach that ends without a lock (stopped, or replaced by a new target) may still have ended with it in the
@@ -808,6 +810,7 @@ final class AppModel {
     @MainActor
     func whereIs(_ item: String) async {
         let spanish = tuning.spanish
+        let ownOne = tuning.myObjects && MyObjects.reference(for: item) != nil  // a find asks Gemini with its photo, never a sighting
         let answer: String = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
                 guard let latest = self.sightings.filter({ Self.matches($0.value.label, item) }).max(by: { $0.value.time < $1.value.time }) else {
@@ -815,11 +818,14 @@ final class AppModel {
                                                                   : "I haven't seen \(item) yet. Say find \(item) and I'll look.")
                 }
                 let seen = latest.value
+                let reaching = (self.guide.state == .guiding || self.guide.state == .lost)
+                    && self.anchor.map { Self.sameSpot($0, seen.anchor) } == true  // a find ends this reach first
                 let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0, spanish: spanish) } ?? (spanish ? "cerca" : "nearby")
                 let ago = Self.timeAgo(Date().timeIntervalSinceReferenceDate - seen.time, spanish: spanish)
                 let plural = spanish ? Self.pluralES(seen.label) : seen.label.hasSuffix("s") && !seen.label.hasSuffix("ss")
-                // A reach there has ended: a find won't go back (they may be in hand), so promise a look, not a trip.
-                let tail = self.unlockedEnds.contains(latest.key)
+                // A find won't go back there: a reach there has ended or is about to (they may be in hand), or they're
+                // their own and get checked against the photo. So promise a look, not a trip.
+                let tail = ownOne || reaching || self.unlockedEnds.contains(latest.key)
                     ? (spanish ? "Di encuentra \(item) y lo busco." : "Say find \(item) and I'll look.")
                     : (spanish ? "Di encuentra \(item) y te llevo." : "Say find \(item) and I'll take you there.")
                 continuation.resume(returning: spanish
