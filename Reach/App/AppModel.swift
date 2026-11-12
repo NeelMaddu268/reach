@@ -385,8 +385,9 @@ final class AppModel {
     @MainActor
     private func followOnce(_ label: String, hint: CGRect?) async {
         guard cameraError == nil, let snapshot = await snapshot(),
-              let found = try? await locator.locate(label, in: snapshot.jpeg, model: Self.watchModel, near: hint,
-                                                    spanish: tuning.spanish, retry: false),
+              let found = try? await locator.locate(label, in: snapshot.jpeg, model: Self.watchModel,
+                                                    reference: tuning.myObjects ? MyObjects.reference(for: label) : nil,
+                                                    near: hint, spanish: tuning.spanish, retry: false),
               targetLabel == label, state == .guiding || state == .lost, !Task.isCancelled else { return }
         let careful = tuning.carefulGuidance
         let shift: Float = await withCheckedContinuation { continuation in
@@ -610,15 +611,16 @@ final class AppModel {
         label.prefix(1).uppercased() + label.dropFirst() + "."
     }
 
-    /// "keys" finds "car keys", "mug" finds "blue mug", "glasses" finds "reading glasses".
+    /// "keys" finds "car keys", "mug" finds "blue mug", "glasses" finds "reading glasses": whole words, plural or not,
+    /// case and accents ignored ("teléfono" is "telefono"). "Pill bottle" isn't "water bottle", "phone" isn't "headphones".
     static func matches(_ label: String, _ query: String) -> Bool {
-        let label = label.lowercased(), query = query.lowercased()
-        if label.contains(query) || query.contains(label) { return true }
-        let head = { (text: String) -> String in
-            let word = String(text.split(separator: " ").last ?? "")
-            return word.hasSuffix("s") ? String(word.dropLast()) : word
+        let words = { (text: String) -> Set<String> in
+            Set(text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                .split { !$0.isLetter && !$0.isNumber }
+                .map { $0.hasSuffix("s") && !$0.hasSuffix("ss") ? String($0.dropLast()) : String($0) })
         }
-        return head(label) == head(query)
+        let label = words(label), query = words(query)
+        return !label.isEmpty && !query.isEmpty && (query.isSubset(of: label) || label.isSubset(of: query))
     }
 
     /// A pinned object matching `query`: from the last scan, or (with "where did I leave" on) anywhere Reach has seen one.
@@ -722,7 +724,8 @@ final class AppModel {
         followTask?.cancel()
         targetLabel = query
         if tuning.spanish && tuning.carefulGuidance { audio.prefetch(["Baja.", "Listo."]) }  // no bundled Spanish clips
-        if let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
+        let ownOne = tuning.myObjects && MyObjects.reference(for: query) != nil  // their own one: ask Gemini, with its photo
+        if !ownOne, let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
             targetLabel = scanned.label
             camera.frameQueue.async { self.startGuiding(to: scanned.anchor, pendingBox: nil, announcing: scanned.label) }
             startFollowing()

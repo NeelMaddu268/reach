@@ -20,17 +20,22 @@ enum MyObjects {
         file(for: query, extension: "jpg").flatMap { try? Data(contentsOf: $0) }
     }
 
-    /// The saved label text for whatever `query` names, if there is one.
+    /// The saved label text for `query`, only if it was saved under that name (never another medicine's label).
     static func text(for query: String) -> String? {
-        file(for: query, extension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        file(for: query, extension: "txt", exact: true).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
     }
 
-    private static func file(for query: String, extension ext: String) -> URL? {
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return files.first { file in
-            let label = file.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "-", with: " ")
-            return file.pathExtension == ext && AppModel.matches(label, query)
+    /// The one saved under `query` itself (plural or not) wins, so "mug" never gets "travel mug". `exact`: only that one.
+    private static func file(for query: String, extension ext: String, exact: Bool = false) -> URL? {
+        let files = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == ext }
+        let name = { (file: URL) in file.deletingPathExtension().lastPathComponent }
+        let wanted = ElevenLabs.slug(query)
+        if let own = files.first(where: { name($0) == wanted || name($0) + "s" == wanted || name($0) == wanted + "s" }) {
+            return own
         }
+        guard !exact else { return nil }
+        return files.first { AppModel.matches(name($0).replacingOccurrences(of: "-", with: " "), query) }
     }
 
     private static var folder: URL {
