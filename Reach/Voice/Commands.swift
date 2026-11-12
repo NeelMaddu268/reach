@@ -216,7 +216,8 @@ final class VoiceInput {
         }
     }
 
-    /// Stops listening and returns what was heard.
+    /// Stops listening and returns what was heard. On main, like the recognizer's result handler that it reads.
+    @MainActor
     func stop() async -> String {
         guard let request else { return "" }
         engine.stop()
