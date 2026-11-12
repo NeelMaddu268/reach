@@ -24,6 +24,8 @@ FIXED = [
     "Gemini had a problem. Tap the object on screen and I'll guide you.",
     "Gemini is busy right now. Try again in a moment, or tap the object on screen and I'll guide you.",
     "Still reading the last one. Ask again in a moment.",
+    "Reach can't use the camera. Turn on Camera for Reach in Settings.",
+    "Reach can't hear you. Turn on Microphone and Speech Recognition for Reach in Settings.",
 ]
 
 

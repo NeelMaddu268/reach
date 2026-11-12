@@ -146,7 +146,12 @@ final class AppModel {
         audio.onSpeak = { [weak self] text in self?.caption = text }
         audio.start()
         camera.onFrame = { [weak self] frame in self?.process(frame) }
-        camera.onError = { [weak self] error in self?.cameraError = error.localizedDescription }
+        camera.onError = { [weak self] error in
+            guard let self else { return }
+            cameraError = error.localizedDescription
+            stop()  // no more frames: don't leave the sonar on its last ping
+            cameraNotReady()
+        }
         do {
             try camera.start()
         } catch {
@@ -262,7 +267,12 @@ final class AppModel {
             }
         case .stop: stop()
         case nil:
-            audio.say(heard.isEmpty ? t("I didn't hear anything.", "No escuché nada.") : t("Say find, then an object.", "Di encuentra y un objeto."))
+            if heard.isEmpty, tuning.networkFallback, !voice.isPermitted {  // never silent: say why, like cameraNotReady
+                audio.say(t("Reach can't hear you. Turn on Microphone and Speech Recognition for Reach in Settings.",
+                            "Reach no te oye. Activa el micrófono y el reconocimiento de voz para Reach en Ajustes."))
+            } else {
+                audio.say(heard.isEmpty ? t("I didn't hear anything.", "No escuché nada.") : t("Say find, then an object.", "Di encuentra y un objeto."))
+            }
         }
     }
 
@@ -992,10 +1002,14 @@ final class AppModel {
         }
     }
 
-    /// No photo to work with: say so (network-failure path) rather than going quiet.
+    /// No photo to work with: say so (network-failure path) rather than going quiet. A denied camera points to Settings.
     @MainActor
     private func cameraNotReady() {
         guard tuning.networkFallback else { return }
+        if cameraError != nil, [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .video)) {
+            return audio.say(t("Reach can't use the camera. Turn on Camera for Reach in Settings.",
+                               "Reach no puede usar la cámara. Activa la cámara para Reach en Ajustes."))
+        }
         audio.say(t("The camera isn't ready. Try again.", "La cámara no está lista. Intenta de nuevo."))
     }
 

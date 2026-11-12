@@ -180,6 +180,11 @@ final class VoiceInput {
         return speech && mic
     }
 
+    /// False when Microphone or Speech Recognition is off for Reach in Settings.
+    var isPermitted: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .authorized && AVAudioApplication.shared.recordPermission == .granted
+    }
+
     func start() {
         guard let recognizer, recognizer.isAvailable, request == nil else { return }
         let input = engine.inputNode
