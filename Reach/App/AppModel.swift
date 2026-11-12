@@ -386,6 +386,10 @@ final class AppModel {
     func checkMine(_ name: String) async {
         guard !reading else { return stillReading() }
         guard let photo = MyObjects.reference(for: name), let text = MyObjects.text(for: name) else {
+            if MyObjects.hasText(like: name) {  // saved under a near name: ask with that one, never save this bottle as a new one
+                return audio.say(t("I have something saved under a similar name. Ask again with the name you saved it as.",
+                                   "Tengo algo guardado con un nombre parecido. Pregunta de nuevo con el nombre que usaste."))
+            }
             return audio.say(t("I don't have your \(name) saved yet. Hold it up and say this is my \(name).",
                                "Todavía no tengo guardado tu \(name). Sostenlo y di esta es mi \(name)."))
         }

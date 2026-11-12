@@ -25,6 +25,11 @@ enum MyObjects {
         file(for: query, extension: "txt", exact: true).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
     }
 
+    /// Whether label text is saved under a name like `query` ("lisinopril" for "lisinopril 10 mg"), exact or not.
+    static func hasText(like query: String) -> Bool {
+        file(for: query, extension: "txt") != nil
+    }
+
     /// The one saved under `query` itself (plural or not, on any word: "pastillas para la presión") wins, so "mug" never
     /// gets "travel mug". `exact`: only that one.
     private static func file(for query: String, extension ext: String, exact: Bool = false) -> URL? {

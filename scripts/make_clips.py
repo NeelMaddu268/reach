@@ -28,6 +28,7 @@ FIXED = [
     "Reach can't hear you. Turn on Microphone and Speech Recognition for Reach in Settings.",
     "I couldn't reach Gemini. Try again in a moment.", "I couldn't read that. Try again in a moment.",
     "I couldn't reach Gemini, so I stopped watching. Try again in a moment.",
+    "I have something saved under a similar name. Ask again with the name you saved it as.",
 ]
 
 
