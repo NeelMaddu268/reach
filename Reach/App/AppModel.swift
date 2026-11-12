@@ -386,7 +386,7 @@ final class AppModel {
     private func followOnce(_ label: String, hint: CGRect?) async {
         guard cameraError == nil, let snapshot = await snapshot(),
               let found = try? await locator.locate(label, in: snapshot.jpeg, model: Self.watchModel, near: hint,
-                                                    spanish: tuning.spanish),
+                                                    spanish: tuning.spanish, retry: false),
               targetLabel == label, state == .guiding || state == .lost, !Task.isCancelled else { return }
         let careful = tuning.carefulGuidance
         let shift: Float = await withCheckedContinuation { continuation in
@@ -455,7 +455,7 @@ final class AppModel {
         let spanish = tuning.spanish
         let found: [ObjectLocator.Found]
         do {
-            found = try await locator.scan(snapshot.jpeg, model: Self.watchModel, spanish: spanish)
+            found = try await locator.scan(snapshot.jpeg, model: Self.watchModel, spanish: spanish, retry: false)
             watchFailures = 0
         } catch {
             watchFailures += 1
@@ -858,7 +858,7 @@ final class AppModel {
 
     static let offline = "I can't reach the internet. Tap the object on screen and I'll guide you."
 
-    /// A Gemini call failed. With the network-failure path: say what actually went wrong (offline, too slow, or
+    /// A Gemini call failed. With the network-failure path: say what actually went wrong (offline, too slow, busy, or
     /// Gemini itself) plus a way forward, and show the error on screen. Otherwise `old`, as before.
     @MainActor
     private func geminiFailed(_ old: String, _ error: Error) {
@@ -872,6 +872,9 @@ final class AppModel {
         } else if code == .timedOut {
             audio.say(t("Gemini is taking too long. Tap the object on screen and I'll guide you.",
                         "Gemini está tardando demasiado. Toca el objeto en la pantalla y te guío."))
+        } else if (error as? Gemini.GeminiError)?.isBusy == true {
+            audio.say(t("Gemini is busy right now. Try again in a moment, or tap the object on screen and I'll guide you.",
+                        "Gemini está ocupado ahora. Intenta de nuevo en un momento, o toca el objeto en la pantalla y te guío."))
         } else {
             audio.say(t("Gemini had a problem. Tap the object on screen and I'll guide you.",
                         "Gemini tuvo un problema. Toca el objeto en la pantalla y te guío."))

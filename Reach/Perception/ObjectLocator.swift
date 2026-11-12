@@ -14,8 +14,9 @@ struct ObjectLocator {
     /// Returns nil when Gemini doesn't see the object. With a `reference` photo of the user's own one
     /// ("this is my mug"), Gemini looks for that same object rather than any match.
     /// `near`: where it was a moment ago (following a moved object), so Gemini doesn't jump to a lookalike.
+    /// `retry`: see `Gemini.generate`.
     func locate(_ query: String, in jpeg: Data, model: String, reference: Data? = nil, near hint: CGRect? = nil,
-                spanish: Bool = false) async throws -> Found? {
+                spanish: Bool = false, retry: Bool = true) async throws -> Found? {
         var prompt = Self.prompt(query) + (spanish ? "\nWrite label in Spanish." : "")
         if let hint {
             let b = [hint.minY, hint.minX, hint.maxY, hint.maxX].map { Int(min(max($0, 0), 1) * 1000) }
@@ -26,16 +27,16 @@ struct ObjectLocator {
                 + prompt
         }
         let text = try await Gemini.generate(prompt: prompt, images: [reference, jpeg].compactMap { $0 }, schema: Self.schema,
-                                             model: model, timeout: timeout)
+                                             model: model, timeout: timeout, retry: retry)
         guard let detection = try? JSONDecoder().decode(Detection.self, from: Data(text.utf8)) else { throw Gemini.GeminiError.badReply }
         guard detection.found else { return nil }
         return Self.found(detection.label, detection.box_2d)
     }
 
     /// Every distinct object on the table (up to 12).
-    func scan(_ jpeg: Data, model: String, spanish: Bool = false) async throws -> [Found] {
+    func scan(_ jpeg: Data, model: String, spanish: Bool = false, retry: Bool = true) async throws -> [Found] {
         let text = try await Gemini.generate(prompt: Self.scanPrompt + (spanish ? "\nWrite labels in Spanish." : ""), images: [jpeg], schema: Self.scanSchema, model: model,
-                                             timeout: timeout)
+                                             timeout: timeout, retry: retry)
         guard let scan = try? JSONDecoder().decode(Scan.self, from: Data(text.utf8)) else { throw Gemini.GeminiError.badReply }
         return scan.objects.compactMap { Self.found($0.label, $0.box_2d) }
     }

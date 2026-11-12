@@ -21,6 +21,7 @@ FIXED = [
     "The camera isn't ready. Try again.", "Watching the table. I'll tell you if anything changes.", "Stopped watching.",
     "Gemini is taking too long. Tap the object on screen and I'll guide you.",
     "Gemini had a problem. Tap the object on screen and I'll guide you.",
+    "Gemini is busy right now. Try again in a moment, or tap the object on screen and I'll guide you.",
 ]
 
 
