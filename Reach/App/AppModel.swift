@@ -255,9 +255,10 @@ final class AppModel {
         case .find(let query): await find(query)
         case .whatsThis:
             if tuning.askAboutItems {
-                // "What is this for?" is a question, not a bare "what's this?": keep the words and the follow-up.
+                // "What is this for?" / "¿Para qué es esto?" is a question, not a bare "what's this?": keep the words
+                // and the follow-up.
                 let spoken = heard.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
-                await ask(spoken.hasSuffix(" for") ? heard : nil)
+                await ask(spoken.hasSuffix(" for") || (tuning.spanish && spoken.hasPrefix("para ")) ? heard : nil)
             } else { await read() }
         case .ask(let question):
             if tuning.askAboutItems { await ask(question) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }
