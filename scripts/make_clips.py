@@ -26,6 +26,8 @@ FIXED = [
     "Still reading the last one. Ask again in a moment.",
     "Reach can't use the camera. Turn on Camera for Reach in Settings.",
     "Reach can't hear you. Turn on Microphone and Speech Recognition for Reach in Settings.",
+    "I couldn't reach Gemini. Try again in a moment.", "I couldn't read that. Try again in a moment.",
+    "I couldn't reach Gemini, so I stopped watching. Try again in a moment.",
 ]
 
 

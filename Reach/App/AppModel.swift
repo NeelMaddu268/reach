@@ -174,7 +174,11 @@ final class AppModel {
         case .find(let object):
             // "my keys" → "keys", the same way a spoken "find my keys" is read.
             let phrase = (tuning.spanish ? "encuentra " : "find ") + object
-            if case .find(let item) = Command(phrase, spanish: tuning.spanish) { await find(item) }
+            switch Command(phrase, spanish: tuning.spanish) {
+            case .find(let item): await find(item)
+            case nil: audio.say(t("Say find, then an object.", "Di encuentra y un objeto."))  // "my", "the", empty
+            default: await find(object.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)))  // "my scanner" reads as a scan
+            }
         case .scan:
             await scan()
         }
@@ -975,6 +979,8 @@ final class AppModel {
     private func geminiFailed(_ old: String, _ error: Error) {
         guard tuning.networkFallback else { return audio.say(old) }
         showError(error.localizedDescription)
+        // VoiceOver keeps touches on the camera card (TouchSurface is hidden from it), so don't offer the tap there.
+        if UIAccessibility.isVoiceOverRunning { return audio.say(old + " " + t("Try again in a moment.", "Intenta de nuevo en un momento.")) }
         let code = (error as? URLError)?.code
         let offline: [URLError.Code] = [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost,
                                         .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff]
