@@ -171,6 +171,16 @@ final class AppModel {
         SiriRequests.shared.handler = { [weak self] request in
             Task { await self?.handleSiri(request) }
         }
+        // A call, Siri or an alarm takes the mic, or Reach leaves the screen: end a double-tap listen the way a
+        // cancelled hold ends, or it stays on with the sonar muted and the next double-tap ends it instead.
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
+            Task { await self?.endListening() }
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { await self?.endListening() }
+        }
     }
 
     /// A find or scan started from Siri.
