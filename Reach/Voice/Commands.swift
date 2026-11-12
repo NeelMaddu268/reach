@@ -62,7 +62,8 @@ enum Command: Equatable {
         }
         for trigger in ["this is my", "these are my", "that's my", "that is my"] {
             guard let range = text.range(of: trigger + " ") else { continue }
-            let object = text[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            var object = text[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            if object.hasSuffix(" please") { object = object.dropLast(7).trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)) }
             guard !object.isEmpty else { return nil }
             self = .remember(object)
             return
