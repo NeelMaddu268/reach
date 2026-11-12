@@ -114,10 +114,14 @@ extension Command {
             let triggers = spanish ? ["es este mi", "es esta mi", "son estos mis", "son estas mis", "es mi", "son mis"]
                                    : ["is this my", "is that my", "are these my", "are those my"]
             for trigger in triggers {
-                // Spanish: "¿es mi …?", "dime si es mi …", "¿esto es mi …?" check; "esta es mi …" saves, "¿cuál es mi …?" asks.
+                // Spanish: "¿es mi …?", "dime si esta es mi …", "¿esa es mi …?" check; "esta es mi …" saves, "¿cuál es mi …?" asks.
                 guard let range = text.range(of: trigger + " ") else { continue }
-                let before = text[..<range.lowerBound].split { !$0.isLetter }.last.map(String.init)
-                guard !spanish || before == nil || ["esto", "eso", "si", "y", "oye"].contains(before!) else { continue }
+                let lead = text[..<range.lowerBound].split { !$0.isLetter }.map(String.init)
+                let ok = ["esto", "eso", "ese", "esa", "esos", "esas", "si", "y", "oye", "ver", "dime", "favor", "mira", "bueno",
+                          "entonces", "hola", "perdon", "oiga", "reach"]
+                let afterIf = ["esta", "este", "estas", "estos"].contains(lead.last ?? "") && lead.dropLast().last == "si"
+                    && !transcript.lowercased().split(whereSeparator: { !$0.isLetter }).contains("sí")  // "Sí, esta es mi …" still saves
+                guard !spanish || lead.last == nil || ok.contains(lead.last!) || afterIf else { continue }
                 var name = text[range.upperBound...].trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
                 let polite = spanish ? " por favor" : " please"  // "is this my lisinopril, please?" asks about "lisinopril"
                 if name.hasSuffix(polite) { name = name.dropLast(polite.count).trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)) }
