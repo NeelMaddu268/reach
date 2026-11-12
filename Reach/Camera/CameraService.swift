@@ -76,15 +76,17 @@ final class CameraService: NSObject, ARSessionDelegate {
         device.unlockForConfiguration()
     }
 
-    func setTorch(_ on: Bool) {
+    /// False if the torch couldn't be set (e.g. the phone is too hot), so the caller can try again later.
+    func setTorch(_ on: Bool) -> Bool {
         guard let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera, device.hasTorch,
-              (try? device.lockForConfiguration()) != nil else { return }
+              (try? device.lockForConfiguration()) != nil else { return false }
+        defer { device.unlockForConfiguration() }
         if on, device.isTorchModeSupported(.on) {
-            try? device.setTorchModeOn(level: 0.6)
+            return (try? device.setTorchModeOn(level: 0.6)) != nil
         } else if device.isTorchModeSupported(.off) {
             device.torchMode = .off
         }
-        device.unlockForConfiguration()
+        return true
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {

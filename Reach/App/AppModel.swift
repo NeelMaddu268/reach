@@ -25,7 +25,7 @@ final class AppModel {
     @ObservationIgnored private let frameTuning = OSAllocatedUnfairLock(initialState: Tuning.load())
     // Frame queue only:
     @ObservationIgnored private var anchor: ObjectAnchor?
-    /// A box waiting for ARKit to find the table under it; guided to as a plain 2D box meanwhile.
+    /// A box waiting for ARKit to find the table under it; no guidance (silent) until it pins.
     @ObservationIgnored private var pendingBox: CGRect?
     @ObservationIgnored private var snapshotRequests: [(Snapshot?) -> Void] = []
     /// Label to announce ("Found keys, out and to the right.") once the next pin has real positions.
@@ -51,6 +51,8 @@ final class AppModel {
     @ObservationIgnored private var guidingSince: TimeInterval = 0
     /// One obstacle warning per reach.
     @ObservationIgnored private var obstacleWarned = false
+    /// The "can't place it yet" line was said for this target.
+    @ObservationIgnored private var pendingHintSaid = false
     /// Every object pinned so far (by a scan or a find), by lowercased label, with when it was seen.
     @ObservationIgnored private var sightings: [String: (label: String, anchor: ObjectAnchor, time: TimeInterval)] = [:]
     /// The latest frame's camera, to say which side a remembered object is on.
@@ -60,6 +62,8 @@ final class AppModel {
     @ObservationIgnored private var relocating = false
     @ObservationIgnored private var reading = false
     @ObservationIgnored private var scanning = false
+    /// When hold-to-talk last ended (host clock), so a careful "Down." doesn't cut off the reply.
+    @ObservationIgnored private var listenEndedAt: TimeInterval = 0
     /// The last held item asked about, kept for one follow-up question.
     @ObservationIgnored private var lastItem: Reader.Item?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
@@ -93,7 +97,9 @@ final class AppModel {
     var lockZone: CGRect?
     /// What we're guiding to, from "find X" (nil for a tapped target).
     var targetLabel: String?
-    var isListening = false
+    var isListening = false {
+        didSet { if oldValue, !isListening { listenEndedAt = CACurrentMediaTime() } }
+    }
     var lastHeard = ""
     var fps = 0.0
     /// Capture → guidance done, for the latest frame.
@@ -855,6 +861,7 @@ final class AppModel {
         focusLocked = false  // refocus on the new target with the next frame
         guidingSince = CACurrentMediaTime()
         obstacleWarned = false
+        pendingHintSaid = false
         guide.start()
     }
 
@@ -977,8 +984,9 @@ final class AppModel {
         lastProcessed = time
 
         let tuning = frameTuning.withLock { $0 }
-        if let change = torch.update(light: frame.lightEstimate?.ambientIntensity, enabled: tuning.autoTorch, time: time) {
-            camera.setTorch(change)
+        if let change = torch.update(light: frame.lightEstimate?.ambientIntensity, enabled: tuning.autoTorch, time: time),
+           !camera.setTorch(change), change {
+            torch = AutoTorch()  // couldn't turn it on (phone too hot): try again after another dark second
         }
         let torchOn = torch.isOn
         hands.restCutoff = tuning.restCutoff
@@ -1026,6 +1034,13 @@ final class AppModel {
                 pendingAnnouncement = nil
             }
         }
+        var pendingHint: String?
+        if tuning.networkFallback, pendingBox != nil, !pendingHintSaid, pendingAnnouncement == nil, announcement == nil,
+           guide.state == .guiding, time - guidingSince > 4 {  // ARKit still can't place the table: say why it's quiet
+            pendingHintSaid = true
+            pendingHint = tuning.spanish ? "Todavía no puedo ubicarlo. Mueve el teléfono un poco."
+                                         : "I can't place it yet. Move the phone a little."
+        }
 
         // Touch-to-explore, when not guiding somewhere.
         var touchedName: String?
@@ -1067,16 +1082,20 @@ final class AppModel {
             if let touchedName, !self.isListening {
                 self.audio.say(touchedName)
             }
-            if let obstacleWarning { self.audio.say(obstacleWarning) }
+            if let pendingHint, !self.isListening { self.audio.say(pendingHint) }
+            if let obstacleWarning, announcement == nil { self.audio.say(obstacleWarning) }
+            // Careful: the reply to what the user just said goes first, then the "Down." (and the lock waiting on it).
+            let holdDown = self.isListening || (output.urgent && CACurrentMediaTime() - self.listenEndedAt < 1.5)
             if let announcement {
                 self.targetShownAt = Date()
-                self.audio.say(announcement)
-            } else if let cue = output.cue, !self.isListening {  // don't talk over the user
+                // Same frame as the warning: say both, or the announcement cuts the warning off.
+                self.audio.say(obstacleWarning.map { "\(announcement) \($0)" } ?? announcement)
+            } else if let cue = output.cue, !holdDown {  // don't talk over the user
                 // Careful: the "Down." the lock waits on cuts in (the hand is over the object, so a direction still
                 // playing is stale), so the wait after it starts from a "Down." that was really said.
                 if output.urgent { self.audio.say(cue) } else { self.audio.cue(cue) }
             }
-            if output.urgent, announcement != nil || self.isListening {
+            if output.urgent, announcement != nil || holdDown {
                 self.camera.frameQueue.async { self.guide.forgetDown() }  // not said: say it again
             }
             switch output.event {
