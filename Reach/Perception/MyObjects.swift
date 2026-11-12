@@ -25,13 +25,15 @@ enum MyObjects {
         file(for: query, extension: "txt", exact: true).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
     }
 
-    /// The one saved under `query` itself (plural or not) wins, so "mug" never gets "travel mug". `exact`: only that one.
+    /// The one saved under `query` itself (plural or not, on any word: "pastillas para la presión") wins, so "mug" never
+    /// gets "travel mug". `exact`: only that one.
     private static func file(for query: String, extension ext: String, exact: Bool = false) -> URL? {
         let files = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
             .filter { $0.pathExtension == ext }
         let name = { (file: URL) in file.deletingPathExtension().lastPathComponent }
+        let words = { (slug: String) in slug.split(separator: "-").map { $0.hasSuffix("s") && !$0.hasSuffix("ss") ? $0.dropLast() : $0 } }
         let wanted = ElevenLabs.slug(query)
-        if let own = files.first(where: { name($0) == wanted || name($0) + "s" == wanted || name($0) == wanted + "s" }) {
+        if let own = files.first(where: { name($0) == wanted }) ?? files.first(where: { words(name($0)) == words(wanted) }) {
             return own
         }
         guard !exact else { return nil }
