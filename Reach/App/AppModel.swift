@@ -318,7 +318,7 @@ final class AppModel {
         defer { reading = false }
         audio.say(t("Let me see.", "Déjame ver."))
         guard cameraError == nil, let snapshot = await snapshot() else { return cameraNotReady() }
-        let previous = question == nil ? nil : lastItem.flatMap { CACurrentMediaTime() - $0.time < 120 ? $0 : nil }
+        let previous = question == nil ? nil : lastItem.flatMap { Date().timeIntervalSinceReferenceDate - $0.time < 120 ? $0 : nil }
         lastItem = nil
         let start = CACurrentMediaTime()
         do {
@@ -760,8 +760,8 @@ final class AppModel {
                                                                   : "I haven't seen \(item) yet. Say find \(item) and I'll look.")
                 }
                 let side = self.lastCamera.map { Self.side(of: seen.anchor, from: $0, spanish: spanish) } ?? (spanish ? "cerca" : "nearby")
-                let ago = Self.timeAgo(CACurrentMediaTime() - seen.time, spanish: spanish)
-                let plural = seen.label.hasSuffix("s")
+                let ago = Self.timeAgo(Date().timeIntervalSinceReferenceDate - seen.time, spanish: spanish)
+                let plural = seen.label.hasSuffix("s") && !seen.label.hasSuffix("ss")
                 continuation.resume(returning: spanish
                     ? "\(plural ? "Tus" : "Tu") \(seen.label) \(plural ? "estaban" : "estaba") \(side), \(ago). Di encuentra \(item) y te llevo."
                     : "Your \(seen.label) \(plural ? "were" : "was") \(side), \(ago). Say find \(item) and I'll take you there.")
@@ -770,9 +770,9 @@ final class AppModel {
         audio.say(answer)
     }
 
-    /// Frame queue only.
+    /// Frame queue only. Wall clock, which keeps counting while the phone sleeps, so "how long ago" stays true.
     private func recordSighting(_ label: String, _ pinned: ObjectAnchor) {
-        sightings[label.lowercased()] = (label, pinned, CACurrentMediaTime())
+        sightings[label.lowercased()] = (label, pinned, Date().timeIntervalSinceReferenceDate)
     }
 
     /// Which way a pinned object is from where the camera points now.

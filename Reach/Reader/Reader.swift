@@ -1,5 +1,4 @@
 import Foundation
-import QuartzCore
 import Vision
 
 /// "What's this?": reads any text in the photo with Vision, then asks Claude for one spoken sentence about
@@ -131,7 +130,7 @@ struct Reader {
             let names = flagged.count == 1 ? flagged[0] : flagged.dropLast().joined(separator: ", ") + and + flagged.last!
             spoken = (spanish ? "Cuidado, la etiqueta dice que contiene \(names). " : "Careful, the label says it contains \(names). ") + spoken
         }
-        return (spoken, Item(jpeg: jpeg, text: text, question: question, answer: reply.answer, time: CACurrentMediaTime()))
+        return (spoken, Item(jpeg: jpeg, text: text, question: question, answer: reply.answer, time: Date().timeIntervalSinceReferenceDate))
     }
 
     /// "peanuts" matches "peanut", "Peanuts", "peanut butter"; with wholeWord, "nuts" matches "walnuts" but not "nutrition".
