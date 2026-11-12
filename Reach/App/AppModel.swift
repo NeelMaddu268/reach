@@ -609,7 +609,8 @@ final class AppModel {
         audio.say(Self.summary(objects.map(\.label), spanish: tuning.spanish))
         // So touch-to-explore names and obstacle warnings play instantly.
         let touchNames = tuning.touchToExplore ? objects.map { Self.touchName($0.label) } : []
-        audio.prefetch(touchNames + objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) })
+        let obstacles = tuning.obstacleWarning ? objects.map { Self.obstaclePhrase($0.label, spanish: tuning.spanish) } : []
+        audio.prefetch(touchNames + obstacles)
     }
 
     /// "I see 4 things: keys, blue mug, phone and pill bottle."
