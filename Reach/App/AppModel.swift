@@ -238,7 +238,11 @@ final class AppModel {
         switch command {
         case .find(let query): await find(query)
         case .whatsThis:
-            if tuning.askAboutItems { await ask(nil) } else { await read() }
+            if tuning.askAboutItems {
+                // "What is this for?" is a question, not a bare "what's this?": keep the words and the follow-up.
+                let spoken = heard.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+                await ask(spoken.hasSuffix(" for") ? heard : nil)
+            } else { await read() }
         case .ask(let question):
             if tuning.askAboutItems { await ask(question) } else { audio.say(t("Say find, then an object.", "Di encuentra y un objeto.")) }
         case .scan: await scan()

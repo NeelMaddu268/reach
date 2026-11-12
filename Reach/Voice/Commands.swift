@@ -43,7 +43,8 @@ enum Command: Equatable {
             .replacingOccurrences(of: "’", with: "'")
             .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
 
-        if text.hasPrefix("stop") || text.hasPrefix("cancel") {
+        let bare = text.replacingOccurrences(of: ",", with: "")  // "Okay, stop."
+        if text.hasPrefix("stop") || text.hasPrefix("cancel") || ["please stop", "ok stop", "okay stop", "no stop"].contains(bare) {
             self = .stop
             return
         }
@@ -79,8 +80,8 @@ enum Command: Equatable {
             self = trigger.hasPrefix("where") ? .whereIs(object) : .find(object)
             return
         }
-        let questionStarts = ["is ", "does ", "do ", "how ", "what ", "which ", "can ", "should ", "when ", "are ",
-                              "will ", "has ", "have ", "who "]
+        let questionStarts = ["is ", "does ", "do ", "how ", "what ", "what's ", "read ", "which ", "can ", "should ",
+                              "when ", "are ", "will ", "has ", "have ", "who "]
         if questionStarts.contains(where: text.hasPrefix) {
             self = .ask(transcript.trimmingCharacters(in: .whitespaces))
             return
@@ -113,7 +114,9 @@ extension Command {
             let triggers = spanish ? ["es este mi", "es esta mi", "son estos mis", "son estas mis", "es mi", "son mis"]
                                    : ["is this my", "is that my", "are these my", "are those my"]
             for trigger in triggers {
-                guard let range = text.range(of: trigger + " ") else { continue }
+                // Spanish only at the start: "¿es mi …?" checks, "esta es mi …" saves.
+                guard let range = text.range(of: trigger + " "),
+                      !spanish || text[..<range.lowerBound].allSatisfy({ !$0.isLetter }) else { continue }
                 let name = text[range.upperBound...].trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
                 if !name.isEmpty { return .checkMine(name) }
             }
@@ -126,7 +129,10 @@ extension Command {
         // Accents folded, so "qué" and "que" both match.
         let text = transcript.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es"))
             .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
-        if ["para", "alto", "basta"].contains(text) || text.hasPrefix("detente") || text.hasPrefix("cancela") { return .stop }
+        // Whole utterance only, so "para qué sirve esto" isn't a stop. "Para, por favor", "basta ya" are.
+        let bare = text.replacingOccurrences(of: ",", with: "")
+        let stops = ["para", "alto", "basta"].flatMap { [$0, "\($0) ya", "\($0) por favor", "ya \($0)", "por favor \($0)"] }
+        if stops.contains(bare) || text.hasPrefix("detente") || text.hasPrefix("cancela") { return .stop }
         if ["que hay en la mesa", "que hay frente a mi", "que ves", "mira alrededor", "escanea"].contains(where: text.contains) {
             return .scan
         }
