@@ -388,7 +388,7 @@ final class AppModel {
 
     @MainActor
     private func followOnce(_ label: String, hint: CGRect?) async {
-        guard cameraError == nil, let snapshot = await snapshot(),
+        guard cameraError == nil, let snapshot = await snapshot(), Self.steady(snapshot.geometry.camera),
               let found = try? await locator.locate(label, in: snapshot.jpeg, model: Self.watchModel,
                                                     reference: tuning.myObjects ? MyObjects.reference(for: label) : nil,
                                                     near: hint, spanish: tuning.spanish, retry: false),
@@ -430,6 +430,10 @@ final class AppModel {
 
     static let watchModel = "gemini-3.5-flash-lite"
 
+    /// Listening, reading, scanning or guiding: watch mode stays quiet.
+    @MainActor
+    private var watchPaused: Bool { isListening || reading || scanning || [.guiding, .lost, .locating].contains(state) }
+
     /// "Tell me if anything changes": every ~3 s, a quick scan (Flash-Lite) is compared with the pins, and each
     /// object that appeared, moved or went is said once. Paused while guiding, listening or reading.
     @MainActor
@@ -442,10 +446,9 @@ final class AppModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard let self, !Task.isCancelled else { return }
-                let busy = isListening || reading || scanning || [.guiding, .lost, .locating].contains(state)
-                if busy { continue }
-                await watchOnce(learnOnly: firstLook && sceneBoxes.isEmpty)  // no scan yet: the first look just learns the table
-                firstLook = false
+                if watchPaused { continue }
+                // No scan yet: the first look that gets used just learns the table.
+                if await watchOnce(learnOnly: firstLook && sceneBoxes.isEmpty) { firstLook = false }
             }
         }
     }
@@ -458,24 +461,28 @@ final class AppModel {
         if saying { audio.say(t("Stopped watching.", "Dejé de vigilar.")) }
     }
 
+    /// One look. True if it was compared with the pins; false if it never was (no photo, a shaky pose, Gemini failed,
+    /// or stopped or busy meanwhile), so a first look that didn't happen still leaves the next one to learn the table.
     @MainActor
-    private func watchOnce(learnOnly: Bool) async {
-        guard cameraError == nil, let snapshot = await snapshot() else { return }
+    private func watchOnce(learnOnly: Bool) async -> Bool {
+        // Relocalizing or a fast move: pins from this photo would be off, and every object would seem to move.
+        guard cameraError == nil, let snapshot = await snapshot(), Self.steady(snapshot.geometry.camera) else { return false }
         let spanish = tuning.spanish
         let found: [ObjectLocator.Found]
         do {
             found = try await locator.scan(snapshot.jpeg, model: Self.watchModel, spanish: spanish, retry: false)
             watchFailures = 0
         } catch {
+            guard !Task.isCancelled else { return false }  // stopped by a find, "stop watching" or a restart: not a Gemini failure
             watchFailures += 1
             print("Watch: \(error.localizedDescription)")
             if watchFailures >= 3 {
                 stopWatching(saying: false)
                 geminiFailed(t("I couldn't reach Gemini, so I stopped watching.", "No pude conectar con Gemini, así que dejé de vigilar."), error)
             }
-            return
+            return false
         }
-        guard watchTask != nil, !Task.isCancelled else { return }
+        guard watchTask != nil, !Task.isCancelled, !watchPaused else { return false }  // busy now: look again next time
         let lines: [String] = await withCheckedContinuation { continuation in
             camera.frameQueue.async {
                 let sightings = found.compactMap { object in
@@ -485,6 +492,7 @@ final class AppModel {
             }
         }
         if !lines.isEmpty { audio.say(lines.joined(separator: " ")) }
+        return true
     }
 
     /// Compares a fresh look with the scene pins, updates them, and returns what to say. A new object counts once it's
@@ -587,8 +595,10 @@ final class AppModel {
             return
         }
         let objects = found.sorted { $0.box.midX < $1.box.midX }
+        // Careful: no pins from a shaky photo (relocalizing, a fast move); a find then asks Gemini.
+        let pinned = tuning.carefulGuidance && !Self.steady(snapshot.geometry.camera) ? [] : objects
         camera.frameQueue.async {
-            self.scene = objects.compactMap { object in
+            self.scene = pinned.compactMap { object in
                 ObjectAnchor(box: object.box, seenIn: snapshot.geometry, session: self.camera.session).map { (object.label, $0) }
             }
             self.scene.forEach { self.recordSighting($0.label, $0.anchor) }
@@ -1230,6 +1240,14 @@ final class AppModel {
         case .limited(.insufficientFeatures): "not enough detail in view"
         case .limited(.relocalizing): "relocalizing"
         case .limited: "tracking limited"
+        }
+    }
+
+    /// Whether a photo's pose can be trusted to pin from (a plain table's insufficientFeatures is fine, as for locks).
+    private static func steady(_ camera: ARCamera) -> Bool {
+        switch camera.trackingState {
+        case .normal, .limited(.insufficientFeatures): true
+        default: false
         }
     }
 }
