@@ -886,7 +886,7 @@ final class AppModel {
 
     @MainActor
     func stop() {
-        stopWatching(saying: false)
+        stopWatching(saying: true)  // a watch gives no sonar: say it ended (silent when none was running)
         followTask?.cancel()
         targetLabel = nil
         camera.frameQueue.async {
