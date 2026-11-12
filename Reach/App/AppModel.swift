@@ -64,6 +64,8 @@ final class AppModel {
     @ObservationIgnored private var lastItem: Reader.Item?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var followTask: Task<Void, Never>?
+    /// Which find is current (a repeated find has the same label).
+    @ObservationIgnored private var findID = 0
     @ObservationIgnored private var watchFailures = 0
     // Watch mode, frame queue only: looks a new object needs before it counts, and misses per scene pin.
     @ObservationIgnored private var watchCandidates: [(label: String, anchor: ObjectAnchor)] = []
@@ -183,14 +185,16 @@ final class AppModel {
         }
     }
 
-    /// Runs a Gemini wait; if it takes more than 2.5 s, says "Still looking." once (dead-air killer).
+    /// Runs a Gemini wait; if it takes more than 2.5 s, says "Still looking." once (dead-air killer), unless `current`
+    /// says the wait was stopped or replaced by then.
     @MainActor
-    private func stillLooking<T>(_ work: () async throws -> T) async rethrows -> T {
+    private func stillLooking<T>(while current: @escaping @MainActor () -> Bool = { true },
+                                 _ work: () async throws -> T) async rethrows -> T {
         guard tuning.deadAirKiller else { return try await work() }
         let line = t("Still looking.", "Sigo buscando.")
         let nudge = Task { @MainActor in
             try await Task.sleep(for: .seconds(2.5))
-            audio.say(line)
+            if current() { audio.say(line) }
         }
         defer { nudge.cancel() }
         return try await work()
@@ -741,10 +745,13 @@ final class AppModel {
     func find(_ query: String) async {
         stopWatching(saying: false)  // any find ends watch mode
         followTask?.cancel()
+        findID += 1
+        let id = findID
         targetLabel = query
         if tuning.spanish && tuning.carefulGuidance { audio.prefetch(["Baja.", "Listo."]) }  // no bundled Spanish clips
         let ownOne = tuning.myObjects && MyObjects.reference(for: query) != nil  // their own one: ask Gemini, with its photo
         if !ownOne, let scanned = await scannedObject(matching: query) {  // already pinned by a scan: no Gemini round trip
+            guard findID == id, targetLabel == query else { return }  // stopped or replaced meanwhile
             targetLabel = scanned.label
             camera.frameQueue.async { self.startGuiding(to: scanned.anchor, pendingBox: nil, announcing: scanned.label) }
             startFollowing()
@@ -757,19 +764,22 @@ final class AppModel {
         }
         let result: (found: ObjectLocator.Found, geometry: FrameGeometry)?
         do {
-            result = try await stillLooking { try await locate(query) }
+            result = try await stillLooking(while: { self.findID == id && self.targetLabel == query }) {
+                try await locate(query)
+            }
         } catch {
             print("Locate: \(error.localizedDescription)")
-            if targetLabel == query { stop() }
+            guard findID == id, targetLabel == query else { return }  // stopped or replaced while we waited: say nothing
+            stop()
             if error is CameraNotReady { cameraNotReady() } else { geminiFailed(t("I couldn't reach Gemini.", "No pude conectar con Gemini."), error) }
             return
         }
-        guard targetLabel == query else { return }  // stopped or replaced while we waited
+        guard findID == id, targetLabel == query else { return }  // stopped or replaced while we waited
         guard let result else {
             // Not in view now: with "where did I leave" on, go to where it was last seen. Not for their own one: a
             // sighting isn't checked against its photo.
             let seen = tuning.whereDidILeave && !ownOne ? await scannedObject(matching: query, sightings: true) : nil
-            guard targetLabel == query else { return }  // stopped or replaced meanwhile
+            guard findID == id, targetLabel == query else { return }  // stopped or replaced meanwhile
             if let seen {
                 targetLabel = seen.label
                 camera.frameQueue.async { self.startGuiding(to: seen.anchor, pendingBox: nil, announcing: seen.label) }
