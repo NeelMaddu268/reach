@@ -4,6 +4,7 @@ struct ContentView: View {
     @State private var model = AppModel()
     @State private var showSettings = false
     @State private var backgroundPress = 0  // a brush or a missed button isn't a hold: listen once a press lasts holdDelay, as on the card
+    @State private var backgroundListening = false  // this press started the listen: only its release ends it
 
     var body: some View {
         VStack(spacing: 10) {
@@ -66,10 +67,13 @@ struct ContentView: View {
                     let id = backgroundPress
                     if pressing {
                         DispatchQueue.main.asyncAfter(deadline: .now() + TouchSurface.holdDelay) {
-                            if backgroundPress == id { model.beginListening() }  // still the same press
+                            guard backgroundPress == id, !model.isListening else { return }  // still the same press; a card or mic listen isn't ours
+                            model.beginListening()
+                            backgroundListening = true
                         }
-                    } else {
-                        Task { await model.endListening() }  // ignored when this press never started listening
+                    } else if backgroundListening {
+                        backgroundListening = false
+                        Task { await model.endListening() }  // a brush while the card or mic listens leaves that listen alone
                     }
                 }, perform: {})  // same hold-to-talk as the camera card, for the screen around the card and controls
                 .accessibilityHidden(true)
