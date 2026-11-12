@@ -23,6 +23,7 @@ FIXED = [
     "Gemini is taking too long. Tap the object on screen and I'll guide you.",
     "Gemini had a problem. Tap the object on screen and I'll guide you.",
     "Gemini is busy right now. Try again in a moment, or tap the object on screen and I'll guide you.",
+    "Still reading the last one. Ask again in a moment.",
 ]
 
 

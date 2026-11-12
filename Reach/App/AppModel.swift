@@ -271,7 +271,7 @@ final class AppModel {
     /// Describes what the user is holding up: Vision reads the text, Claude says what it is in one sentence.
     @MainActor
     func read() async {
-        guard !reading else { return }
+        guard !reading else { return stillReading() }
         reading = true
         defer { reading = false }
         audio.say(t("Let me see.", "Déjame ver."))
@@ -288,11 +288,18 @@ final class AppModel {
         }
     }
 
+    /// A held-item read is still running: say so, so the answer that follows isn't taken for this request.
+    @MainActor
+    private func stillReading() {
+        audio.say(t("Still reading the last one. Ask again in a moment.",
+                    "Sigo leyendo lo anterior. Pregunta de nuevo en un momento."))
+    }
+
     /// A question about the held item (nil = "what's this?"), answered by Gemini from what's printed on it.
     /// The item is kept for one follow-up ("how many do I take?"); "what's this?" always starts a new one.
     @MainActor
     func ask(_ question: String?) async {
-        guard !reading else { return }
+        guard !reading else { return stillReading() }
         reading = true
         defer { reading = false }
         audio.say(t("Let me see.", "Déjame ver."))
@@ -311,6 +318,7 @@ final class AppModel {
             audio.say(result.spoken)
         } catch {
             readMs = (CACurrentMediaTime() - start) * 1000
+            if let previous { lastItem = previous }  // a failed follow-up keeps the item, so the retry still has it
             print("Ask: \(error.localizedDescription)")
             geminiFailed(t("I couldn't read that.", "No pude leer eso."), error)
         }
@@ -322,7 +330,7 @@ final class AppModel {
     /// total of the ones it can clearly read. Unreadable bills are said, never guessed.
     @MainActor
     func countMoney() async {
-        guard !reading else { return }
+        guard !reading else { return stillReading() }
         reading = true
         defer { reading = false }
         audio.say(t("Let me see.", "Déjame ver."))
@@ -352,7 +360,7 @@ final class AppModel {
     /// "Is this my lisinopril?": the held bottle's label against the one saved with "this is my lisinopril".
     @MainActor
     func checkMine(_ name: String) async {
-        guard !reading else { return }
+        guard !reading else { return stillReading() }
         guard let photo = MyObjects.reference(for: name), let text = MyObjects.text(for: name) else {
             return audio.say(t("I don't have your \(name) saved yet. Hold it up and say this is my \(name).",
                                "Todavía no tengo guardado tu \(name). Sostenlo y di esta es mi \(name)."))
