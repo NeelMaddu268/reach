@@ -29,6 +29,9 @@ FIXED = [
     "I couldn't reach Gemini. Try again in a moment.", "I couldn't read that. Try again in a moment.",
     "I couldn't reach Gemini, so I stopped watching. Try again in a moment.",
     "I have something saved under a similar name. Ask again with the name you saved it as.",
+    "I couldn't say that. Try again in a moment.",
+    "I can't read the label clearly. Try holding it closer, label toward the camera.",
+    "I can only tell you what's printed on the label.", "I don't see any bills.",
 ]
 
 
