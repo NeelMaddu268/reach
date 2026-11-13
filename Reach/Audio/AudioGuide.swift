@@ -4,7 +4,7 @@ import UIKit
 
 /// Earbud audio: the sonar (soft pings whose pan, pitch and rate come from `Guide`, a hum when over the object), the lock chime,
 /// and the voice. Speech prefers a bundled ElevenLabs clip (Audio/Clips/), then live ElevenLabs (cached on disk),
-/// then the best iPhone voice installed.
+/// then the best iPhone voice installed (with ElevenLabs only on: just for warnings).
 final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
     struct Tone: Equatable {
         var frequency = 440.0
@@ -21,6 +21,11 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
     var spanish = false
     /// No gaps: if live speech is slow (> 2.5 s) or failed in the last 30 s, the iPhone voice speaks instead.
     var networkFallback = false
+    /// Never the iPhone voice (overrides `networkFallback`'s handover): a live line waits for ElevenLabs, tries once more,
+    /// and if it still fails the "I couldn't say that" clip plays. Only medication and allergy warnings still fall back
+    /// to the iPhone voice, so they're never lost.
+    var elevenLabsOnly = false
+    static let unsaid = "I couldn't say that. Try again in a moment."
     private var liveVoiceDownUntil = Date.distantPast
     /// The phrase the live voice is fetching; cleared when the iPhone voice takes over or a new phrase starts.
     private var speakToken: UUID?
@@ -139,7 +144,8 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
             play(audio)
             return
         }
-        let fallback = networkFallback
+        let only = elevenLabsOnly
+        let fallback = networkFallback && !only
         guard !AppConfig.elevenLabsAPIKey.isEmpty, !(fallback && Date() < liveVoiceDownUntil) else {
             speakWithSystemVoice(text)
             return
@@ -148,7 +154,8 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
         let token = UUID()
         speakToken = token
         fetch = Task { @MainActor [weak self] in
-            let audio = try? await ElevenLabs.speech(text, spanish: spanish)
+            var audio = try? await ElevenLabs.speech(text, spanish: spanish)
+            if audio == nil, only, !Task.isCancelled { audio = try? await ElevenLabs.speech(text, spanish: spanish) }
             guard let self, !Task.isCancelled else { return }
             if let audio {
                 Self.cache(audio, for: text)
@@ -160,6 +167,8 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
             fetch = nil
             if let audio {
                 play(audio)
+            } else if only, !Self.isWarning(text) {
+                if let clip = Self.storedAudio(for: Self.unsaid) { play(clip) } else { setDucked(false) }
             } else {
                 speakWithSystemVoice(text)
             }
@@ -172,6 +181,12 @@ final class AudioGuide: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDele
             fetch = nil
             speakWithSystemVoice(text)
         }
+    }
+
+    /// A medication mismatch ("Careful, this isn't your …") or an allergy warning ("Careful, the label says it contains …").
+    private static func isWarning(_ text: String) -> Bool {
+        ["Careful, this isn't your", "Careful, the label says", "Cuidado, esto no es tu", "Cuidado, la etiqueta dice"]
+            .contains { text.hasPrefix($0) }
     }
 
     private func play(_ audio: Data) {

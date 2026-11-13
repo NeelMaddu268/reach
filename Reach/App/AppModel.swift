@@ -91,6 +91,7 @@ final class AppModel {
             if voice.spanish != tuning.spanish { voice.spanish = tuning.spanish }
             audio.spanish = tuning.spanish
             audio.networkFallback = tuning.networkFallback
+            audio.elevenLabsOnly = tuning.elevenLabsOnly
         }
     }
 
@@ -167,6 +168,7 @@ final class AppModel {
         voice.spanish = tuning.spanish
         audio.spanish = tuning.spanish
         audio.networkFallback = tuning.networkFallback
+        audio.elevenLabsOnly = tuning.elevenLabsOnly
         _ = await voice.requestPermissions()  // ask now, not mid-demo
         SiriRequests.shared.handler = { [weak self] request in
             Task { await self?.handleSiri(request) }

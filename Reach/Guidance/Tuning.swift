@@ -54,6 +54,9 @@ struct Tuning: Equatable, Codable {
     /// Never go silent on a network problem: Gemini failures say "I can't reach the internet. Tap the object on screen…",
     /// a missing camera frame is said out loud, and a slow or failing live voice hands over to the iPhone voice at once.
     var networkFallback = true
+    /// Only the ElevenLabs voice: a slow or failed live line waits and retries instead of the iPhone voice, then says
+    /// "I couldn't say that." Medication and allergy warnings still fall back to the iPhone voice.
+    var elevenLabsOnly = true
     /// "How much money is this?": counts the bills it can clearly read, labels each one on screen.
     var moneyReader = false
     /// "This is my <medicine>" also saves its label text; "is this my <medicine>?" checks a bottle against it.

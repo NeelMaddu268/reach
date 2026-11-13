@@ -29,6 +29,7 @@ struct TuningSheet: View {
                     feature("Watch mode", "eye", $model.tuning.watchMode)
                     feature("Siri shortcuts", "mic.badge.plus", $model.tuning.siriShortcuts)
                     feature("Español", "globe", $model.tuning.spanish)
+                    feature("ElevenLabs voice only", "waveform", $model.tuning.elevenLabsOnly)
                 } header: {
                     Text("Features")
                 } footer: {
